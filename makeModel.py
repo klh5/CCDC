@@ -13,6 +13,8 @@ class MakeCCDCModel(object):
         self.three_times_RMSE = None
 
     def fit_model(self, reflectance, julian_dates):
+        
+        """Finds the coefficients by fitting an OLS model to the data"""
 
         terms = []
 
@@ -39,16 +41,22 @@ class MakeCCDCModel(object):
         
     def get_predicted(self, julian_date):
         
+        """Returns the predicted value for a given julian date based on the model coefficients from OLS"""
+        
         new_pixel = self.coefficients[0] + (self.coefficients[1]*(np.cos(self.two_pi_div_T * julian_date))) + (self.coefficients[2]*(np.sin(self.two_pi_div_T * julian_date))) + (self.coefficients[3]*julian_date)
             
         return new_pixel
     
     def get_coefficients(self):
         
+        """Returns the list of coefficients for this model"""
+        
         if(self.coefficients.any()):
             return self.coefficients
 
     def get_multiplied_rmse(self):
+        
+        """Returns the multipled RMSE value, which is used to find change in the model"""
     
         if(self.three_times_RMSE != None):
             return self.three_times_RMSE

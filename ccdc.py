@@ -9,6 +9,8 @@ from removeOutliers import RLMRemoveOutliers
 model_list = [None for i in range(0,7)]     # List of models, one for each band
 
 def plot_data(data_to_plot, figures):
+    
+    """Creates seperate plots for each of the bands"""
 
     two_pi_div_T = (2 * np.pi) / 365
     
@@ -30,6 +32,8 @@ def plot_data(data_to_plot, figures):
         #plt.close(fig)
 
 def setupModels(data_all_bands):
+    
+    """Creates a model for each band and stores it in model_list"""
 
     # Get julian dates
     julian_dates = data_all_bands[:,0]
@@ -46,6 +50,11 @@ def setupModels(data_all_bands):
         model_list[i] = model
 
 def findChange(pixel_data, figures):
+    
+    """This function does two things: 
+        1. Finds the next set of at least 6 clear observations from which the models can be initialized.
+        2. Continues to add data points to the model until either a new breakpoint is detected, or there
+        are not enough observations remaining."""
 
     # Subset first 12 clear pixels for model initialisation
     model_data = pixel_data[0:12,:]
@@ -64,7 +73,8 @@ def findChange(pixel_data, figures):
         # Get rid of any obvious outliers
         model_data = robust_outliers.clean_data(model_data)
     
-        if(len(model_data) < 10):
+        # This will later be adjusted so that the number of model terms is adjusted to the number of clear observations available
+        if(len(model_data) < 6):
             print("Not enough data left after removing outliers")
             return []
         
@@ -144,6 +154,8 @@ def findChange(pixel_data, figures):
 
 def main():
     
+    """Program runs from here"""
+    
     # One figure for each band - makes the plots much simpler
     fig_list = [plt.figure("Band" + str(i+1)) for i in range(0, 7)]
     
@@ -153,9 +165,10 @@ def main():
         print("No data file specified. Exiting")
         sys.exit()
 
-    next_data = next_data[np.argsort(next_data[:,0])]        # Sort data by DOY
+    # Sort data by date
+    next_data = next_data[np.argsort(next_data[:,0])]
     
-    # Only select clear pixels
+    # Only select clear pixels (0 is clear land; 1 is clear water)
     next_data = next_data[next_data[:,8] < 2]
 
     # We need at least 15 observations determined as clear by Fmask to proceed
@@ -164,6 +177,10 @@ def main():
         if(len(next_data) >= 15):
             next_data = findChange(next_data, fig_list)
 
+        else:
+            break
+
+    # Once there is no more data to process, plot the results
     plt.legend(['Original data', 'OLS model'])
     plt.show()
 

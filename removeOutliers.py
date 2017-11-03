@@ -10,6 +10,8 @@ class RLMRemoveOutliers(object):
         self.two_pi_div_T = (2 * np.pi) / self.T
     
     def clean_data(self, pixel_data):
+        
+        """Extracts the Band 2 and Band 5 data, which are used to build RLMs for detecting cloud and snow outliers"""
     
         # Extract list of dates
         julian_dates = pixel_data[:,0]
@@ -47,6 +49,8 @@ class RLMRemoveOutliers(object):
     
 
     def makeRLMModel(self, band_data, julian_dates, N):
+        
+        """Builds the model and stores the coefficients"""
 
         terms = []
         
@@ -75,6 +79,8 @@ class RLMRemoveOutliers(object):
         return coeff_list
     
     def removeBadPixels(self, band_data, coefficients, N, band_num):
+        
+        """Goes through each observation and makes a list of outliers"""
         
         two_pi_div_NT = (2 * np.pi) / (N * self.T)
         outliers = []

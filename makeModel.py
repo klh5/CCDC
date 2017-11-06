@@ -10,7 +10,7 @@ class MakeCCDCModel(object):
         self.coefficients = None
         self.T = 365
         self.two_pi_div_T = (2 * np.pi) / self.T
-        self.three_times_RMSE = None
+        self.RMSE = None
 
     def fit_model(self, reflectance, julian_dates):
         
@@ -32,12 +32,13 @@ class MakeCCDCModel(object):
     
         terms = np.array(terms).T
         
-        ols_model = np.linalg.lstsq(terms, reflectance)
-        self.coefficients = ols_model[0]
-
-        RMSE = np.sqrt(ols_model[1])
+        lasso_model = sm.OLS(reflectance, terms)
+        lasso_results = lasso_model.fit_regularized(method='elastic_net', alpha=0.1)
+        self.coefficients = lasso_results.params
         
-        self.three_times_RMSE = RMSE * 3
+        predicted_vals = [self.get_predicted(row) for row in julian_dates]
+    
+        self.RMSE = np.sqrt(((predicted_vals - reflectance) ** 2).mean())
         
     def get_predicted(self, julian_date):
         
@@ -54,12 +55,12 @@ class MakeCCDCModel(object):
         if(self.coefficients.any()):
             return self.coefficients
 
-    def get_multiplied_rmse(self):
+    def get_rmse(self):
         
-        """Returns the multipled RMSE value, which is used to find change in the model"""
+        """Returns the RMSE value, which is used to find change in the model"""
     
-        if(self.three_times_RMSE != None):
-            return self.three_times_RMSE
+        if(self.RMSE != None):
+            return self.RMSE
 
 
 

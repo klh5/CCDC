@@ -13,12 +13,15 @@ def plot_data(data_to_plot, figures, num_bands):
     """Creates seperate plots for each of the bands"""
 
     two_pi_div_T = (2 * np.pi) / 365
+    four_pi_div_T = (4 * np.pi) / 365
+    six_pi_div_T = (6 * np.pi) / 365
     
     for i in range(0, num_bands):
         ax2 = figures[i].add_subplot(111)
         # Plot the model
-        f = interp1d(data_to_plot[:,0], model_list[i].get_coefficients()[0] + (model_list[i].get_coefficients()[1]*(np.cos(two_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[2]*(np.sin(two_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[3]*data_to_plot[:,0]), kind='cubic')
+        f = interp1d(data_to_plot[:,0], model_list[i].get_coefficients()[0] + (model_list[i].get_coefficients()[1]*(np.cos(two_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[2]*(np.sin(two_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[3]*data_to_plot[:,0]) + (model_list[i].get_coefficients()[4]*(np.sin(four_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[5]*(np.sin(four_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[6]*(np.cos(six_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[7]*(np.sin(six_pi_div_T * data_to_plot[:,0]))), kind='cubic')
         xnew = np.linspace(data_to_plot[:,0].min(), data_to_plot[:,0].max(), 200)
+
         ax2.plot(xnew, f(xnew), 'green', linewidth=1)
 
 def setupModels(data_all_bands, num_bands):

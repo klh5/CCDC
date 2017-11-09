@@ -10,6 +10,8 @@ class MakeCCDCModel(object):
         self.coefficients = None
         self.T = 365
         self.two_pi_div_T = (2 * np.pi) / self.T
+        self.four_pi_div_T = (4 * np.pi) / self.T
+        self.six_pi_div_T = (2 * np.pi) / self.T
         self.RMSE = None
 
     def fit_model(self, reflectance, julian_dates):
@@ -29,6 +31,18 @@ class MakeCCDCModel(object):
     
         c1i = (julian_dates - julian_dates) + julian_dates
         terms.append(c1i)
+
+        a2i = np.cos(self.four_pi_div_T * julian_dates)
+        terms.append(a2i)
+
+        b2i = np.sin(self.four_pi_div_T * julian_dates)
+        terms.append(b2i)
+
+        a3i = np.cos(self.six_pi_div_T * julian_dates)
+        terms.append(a3i)
+
+        b3i = np.sin(self.six_pi_div_T * julian_dates)
+        terms.append(b3i)
     
         terms = np.array(terms).T
         
@@ -44,7 +58,7 @@ class MakeCCDCModel(object):
         
         """Returns the predicted value for a given julian date based on the model coefficients from OLS"""
         
-        new_pixel = self.coefficients[0] + (self.coefficients[1]*(np.cos(self.two_pi_div_T * julian_date))) + (self.coefficients[2]*(np.sin(self.two_pi_div_T * julian_date))) + (self.coefficients[3]*julian_date)
+        new_pixel = self.coefficients[0] + (self.coefficients[1]*(np.cos(self.two_pi_div_T * julian_date))) + (self.coefficients[2]*(np.sin(self.two_pi_div_T * julian_date))) + (self.coefficients[3]*julian_date) + (self.coefficients[4]*(np.sin(self.four_pi_div_T * julian_date))) + (self.coefficients[5]*(np.sin(self.four_pi_div_T * julian_date))) + (self.coefficients[6]*(np.cos(self.six_pi_div_T * julian_date)))+ (self.coefficients[7]*(np.sin(self.six_pi_div_T * julian_date)))
             
         return new_pixel
     

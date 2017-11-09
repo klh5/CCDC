@@ -46,11 +46,11 @@ def setupModels(data_all_bands, num_bands):
 def findChange(pixel_data, figures, num_bands):
     
     """This function does two things: 
-        1. Finds the next set of at least 6 clear observations from which the models can be initialized.
+        1. Finds the next set of 12 observations without change from which the models can be initialized.
         2. Continues to add data points to the model until either a new breakpoint is detected, or there
         are not enough observations remaining."""
 
-    # Subset first 12 clear pixels for model initialisation
+    # Subset first 12 clear observations for model initialisation
     model_data = pixel_data[0:12,:]
 
     # Start off with the model uninitialized
@@ -58,21 +58,15 @@ def findChange(pixel_data, figures, num_bands):
     num_iters = 0
 
     model_end = None # Store the index of the end date of the current model period
-    
-    robust_outliers = RLMRemoveOutliers()
 
     # Model initialization sequence
     while(model_init == False):
         
-        # Get rid of any obvious outliers
-        model_data = robust_outliers.clean_data(model_data)
-    
-        # This will later be adjusted so that the number of model terms is adjusted to the number of clear observations available
-        if(len(model_data) < 6):
-            print("Not enough data left after removing outliers")
-            return []
-        
         num_data_points = len(model_data)
+        
+        if(num_data_points < 6):
+            print("Not enough data points left to initialize model.")
+            return []
     
         # Re-initialize the models
         setupModels(model_data, num_bands)
@@ -87,7 +81,7 @@ def findChange(pixel_data, figures, num_bands):
         total_start_eval = 0
         total_end_eval = 0
 
-        # Check for change during the initialization period. We need 12 clear observations with no change
+        # Check for change during the initialization period. We need 12 observations with no change
         for i in range(0, num_bands): # For each Landsat band
             
             for row in model_data:
@@ -117,7 +111,7 @@ def findChange(pixel_data, figures, num_bands):
         new_obs = pixel_data[model_end] # Get next observation
 
         change_eval = 0 
-        
+
         for i in range(0,num_bands):    # For each band
             residual_val = np.absolute(new_obs[i+1] - model_list[i].get_predicted(new_obs[0])) / (model_list[i].get_rmse()*2)
             change_eval += residual_val
@@ -148,37 +142,38 @@ def main():
     """Program runs from here"""
     
     if(len(sys.argv) > 1):
-        next_data = np.loadtxt(sys.argv[1], delimiter = ',')
+        data_in = np.loadtxt(sys.argv[1], delimiter = ',')
     else:
         print("No data file specified. Exiting")
         sys.exit()
 
     # Get number of bands, which will be the number of columns - 2
-    num_bands = next_data.shape[1] - 2
+    num_bands = data_in.shape[1] - 2
 
     # One figure for each band - makes the plots much simpler
     fig_list = []
     
     # Sort data by date
-    next_data = next_data[np.argsort(next_data[:,0])]
+    data_in = data_in[np.argsort(data_in[:,0])]
     
     # Only select clear pixels (0 is clear land; 1 is clear water)
-    next_data = next_data[next_data[:,num_bands+1] < 2]
+    data_in = data_in[data_in[:,num_bands+1] < 2]
+
+    # Screen for any remaining snow or cloud pixels missed by Fmask
+    robust_outliers = RLMRemoveOutliers()
+    next_data = robust_outliers.clean_data(data_in)
+
+    # Decide on number of coefficients based on how many clear observations are left...
     
     for i in range(0, num_bands):
         fig_list.append(plt.figure("Band" + str(i+1)))
         ax1 = fig_list[i].add_subplot(111)
         ax1.plot(next_data[:,0], next_data[:,i+1], 'o', color='black', label='Original data', markersize=2)
 
-    # We need at least 15 observations determined as clear by Fmask to proceed
-    while(len(next_data) > 0):
+    # We need at least 15 clear observations
+    while(len(next_data) >= 15):
         
-        if(len(next_data) >= 15):
-            next_data = findChange(next_data, fig_list, num_bands)
-
-        else:
-            print("Less than 15 observations remaining after change")
-            break
+        next_data = findChange(next_data, fig_list, num_bands)
 
     # Once there is no more data to process, plot the results
     plt.legend(['Original data', 'Lasso fit'])

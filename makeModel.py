@@ -47,7 +47,7 @@ class MakeCCDCModel(object):
         terms = np.array(terms).T
         
         lasso_model = sm.OLS(reflectance, terms)
-        lasso_results = lasso_model.fit_regularized(method='elastic_net', alpha=0.1)
+        lasso_results = lasso_model.fit_regularized(method='elastic_net', alpha=0.1, L1_wt=1.0)
         self.coefficients = lasso_results.params
         
         predicted_vals = [self.get_predicted(row) for row in julian_dates]

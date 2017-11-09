@@ -1,6 +1,6 @@
 import numpy as np
 import statsmodels.api as sm
-from jdutil import jd_to_date
+from datetime import datetime
 
 class RLMRemoveOutliers(object):
 
@@ -16,13 +16,16 @@ class RLMRemoveOutliers(object):
         # Extract list of dates
         julian_dates = pixel_data[:,0]
         
-        # Get number of years
-        num_years = jd_to_date(np.amax(julian_dates))[0] - jd_to_date(np.amin(julian_dates))[0]
-        if(num_years == 0):
-            num_years = 1
+        # Get number of years (from Python/Rata Die date)
+        last_date = datetime.fromordinal(int(np.amax(julian_dates))).strftime('%Y')
+        first_date = datetime.fromordinal(int(np.amin(julian_dates))).strftime('%Y')
+
+        num_years = int(last_date) - int(first_date)
+
+        print(num_years)
 
         # Extract band 2 data
-        band2_ref = pixel_data[:,2]
+        band2_ref = pixel_data[:,1]
 
         # Model band 2 data
         band2_coeffs = self.makeRLMModel(band2_ref, julian_dates, num_years)
@@ -32,7 +35,7 @@ class RLMRemoveOutliers(object):
         band2_outliers = self.removeBadPixels(band2_data, band2_coeffs, num_years, 2)
         
         # Extract band 5 data
-        band5_ref = pixel_data[:,5]
+        band5_ref = pixel_data[:,4]
         
         # Model band 5 data
         band5_coeffs = self.makeRLMModel(band5_ref, julian_dates, num_years)

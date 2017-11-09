@@ -15,9 +15,10 @@ def plot_data(data_to_plot, figures, num_bands):
     two_pi_div_T = (2 * np.pi) / 365
     four_pi_div_T = (4 * np.pi) / 365
     six_pi_div_T = (6 * np.pi) / 365
-    
+
     for i in range(0, num_bands):
         ax2 = figures[i].add_subplot(111)
+
         # Plot the model
         f = interp1d(data_to_plot[:,0], model_list[i].get_coefficients()[0] + (model_list[i].get_coefficients()[1]*(np.cos(two_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[2]*(np.sin(two_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[3]*data_to_plot[:,0]) + (model_list[i].get_coefficients()[4]*(np.sin(four_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[5]*(np.sin(four_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[6]*(np.cos(six_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[7]*(np.sin(six_pi_div_T * data_to_plot[:,0]))), kind='cubic')
         xnew = np.linspace(data_to_plot[:,0].min(), data_to_plot[:,0].max(), 200)
@@ -90,7 +91,7 @@ def findChange(pixel_data, figures, num_bands):
         for i in range(0, num_bands): # For each Landsat band
             
             for row in model_data:
-                slope_val = (np.absolute(model_list[i].get_coefficients()[3]) * row[0]) / 3 * model_list[i].get_rmse() / total_time
+                slope_val = ((np.absolute(model_list[i].get_coefficients()[3]) * row[0])) / 3 * (model_list[i].get_rmse() / total_time)
                 total_slope_eval += slope_val
     
             start_val = np.absolute(model_data[0, i+1] - model_list[i].get_predicted(model_data[0, 0])) / (3 * model_list[i].get_rmse())
@@ -105,41 +106,38 @@ def findChange(pixel_data, figures, num_bands):
 
         else:
             model_init = True
-            model_end = 12 + num_iters
+            model_end = 12 + num_iters + 1
             print("Model initialized. Iterations needed: ", num_iters)
 
     # Detect change
+    change_flag = 0
+
     while((model_end+1) <= len(pixel_data)):
 
-        new_data = pixel_data[model_end:model_end+6,:] # Get next six data points
+        new_obs = pixel_data[model_end] # Get next observation
 
-        # Data point can be flagged as being potential change
-        change_flag = 0
-    
-        for index, row in enumerate(new_data):        # For each new data point
-            change_eval = 0
+        change_eval = 0 
         
-            for i in range(0,num_bands):    # For each band
-                residual_val = np.absolute(row[i+1] - model_list[i].get_predicted(row[0])) / (model_list[i].get_rmse()*2)
-                change_eval += residual_val
+        for i in range(0,num_bands):    # For each band
+            residual_val = np.absolute(new_obs[i+1] - model_list[i].get_predicted(new_obs[0])) / (model_list[i].get_rmse()*2)
+            change_eval += residual_val
 
-            if(change_eval <= 1):
-                print("Adding new data point")
-                model_data = np.vstack((model_data, row))
-            else:
-                change_flag += 1
+        if(change_eval <= 1):
+            print("Adding new data point")
+            model_data = np.vstack((model_data, new_obs))
+            setupModels(model_data, num_bands)
+            change_flag = 0 # Reset change flag because we have an inlier
+
+        else:
+            change_flag += 1 # Don't add the new pixel to the model
     
         if(change_flag == 6):
             print("Change detected!")
             plot_data(model_data, figures, num_bands)
             return pixel_data[model_end:,]
-    
-        else:
-            print("Re-initializing models with new data point(s)")
-            setupModels(model_data, num_bands)
         
-        # Need to get the next three pixels, whether or not the model has been updated
-        model_end += 6
+        # Need to get the next observation
+        model_end += 1
     
     # No change detected, end of data reached
     plot_data(model_data, figures, num_bands)
@@ -179,6 +177,7 @@ def main():
             next_data = findChange(next_data, fig_list, num_bands)
 
         else:
+            print("Less than 15 observations remaining after change")
             break
 
     # Once there is no more data to process, plot the results
@@ -188,8 +187,6 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-
 
 
 

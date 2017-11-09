@@ -52,7 +52,7 @@ class MakeCCDCModel(object):
         
         predicted_vals = [self.get_predicted(row) for row in julian_dates]
     
-        self.RMSE = np.sqrt(((predicted_vals - reflectance) ** 2).mean())
+        self.RMSE = np.sqrt(np.mean(((predicted_vals - reflectance) ** 2)))
         
     def get_predicted(self, julian_date):
         

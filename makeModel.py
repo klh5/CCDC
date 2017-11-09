@@ -57,7 +57,7 @@ class MakeCCDCModel(object):
     def get_predicted(self, julian_date):
         
         """Returns the predicted value for a given julian date based on the model coefficients from OLS"""
-        
+
         new_pixel = self.coefficients[0] + (self.coefficients[1]*(np.cos(self.two_pi_div_T * julian_date))) + (self.coefficients[2]*(np.sin(self.two_pi_div_T * julian_date))) + (self.coefficients[3]*julian_date) + (self.coefficients[4]*(np.sin(self.four_pi_div_T * julian_date))) + (self.coefficients[5]*(np.sin(self.four_pi_div_T * julian_date))) + (self.coefficients[6]*(np.cos(self.six_pi_div_T * julian_date)))+ (self.coefficients[7]*(np.sin(self.six_pi_div_T * julian_date)))
             
         return new_pixel

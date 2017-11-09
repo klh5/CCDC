@@ -22,7 +22,7 @@ class RLMRemoveOutliers(object):
 
         num_years = int(last_date) - int(first_date)
 
-        print(num_years)
+        print("Years of data: {}".format(num_years))
 
         # Extract band 2 data
         band2_ref = pixel_data[:,1]

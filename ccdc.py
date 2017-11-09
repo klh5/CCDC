@@ -21,7 +21,7 @@ def plot_data(data_to_plot, figures, num_bands):
 
         # Plot the model
         f = interp1d(data_to_plot[:,0], model_list[i].get_coefficients()[0] + (model_list[i].get_coefficients()[1]*(np.cos(two_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[2]*(np.sin(two_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[3]*data_to_plot[:,0]) + (model_list[i].get_coefficients()[4]*(np.sin(four_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[5]*(np.sin(four_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[6]*(np.cos(six_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[7]*(np.sin(six_pi_div_T * data_to_plot[:,0]))), kind='cubic')
-        xnew = np.linspace(data_to_plot[:,0].min(), data_to_plot[:,0].max(), 200)
+        xnew = np.linspace(data_to_plot[:,0].min(), data_to_plot[:,0].max(), 100)
 
         ax2.plot(xnew, f(xnew), 'green', linewidth=1)
 
@@ -85,23 +85,24 @@ def findChange(pixel_data, figures, num_bands):
         for i in range(0, num_bands): # For each Landsat band
             
             for row in model_data:
-                slope_val = ((np.absolute(model_list[i].get_coefficients()[3]) * row[0])) / 3 * (model_list[i].get_rmse() / total_time)
+                slope_val = ((model_list[i].get_coefficients()[3]) * row[0]) / 3 * (model_list[i].get_rmse() / total_time)
                 total_slope_eval += slope_val
     
-            start_val = np.absolute(model_data[0, i+1] - model_list[i].get_predicted(model_data[0, 0])) / (3 * model_list[i].get_rmse())
+            start_val = (model_data[0, i+1] - model_list[i].get_predicted(model_data[0, 0])) / (3 * model_list[i].get_rmse())
             total_start_eval += start_val
 
-            end_val = np.absolute(model_data[num_data_points-1, i+1] - model_list[i].get_predicted(model_data[num_data_points-1, 0])) / (3 * model_list[i].get_rmse())
+            end_val = (model_data[num_data_points-1, i+1] - model_list[i].get_predicted(model_data[num_data_points-1, 0])) / (3 * model_list[i].get_rmse())
             total_end_eval += end_val
 
         if(total_slope_eval > 1 or total_start_eval > 1 or total_end_eval > 1):
             num_iters += 1
             model_data = pixel_data[0+num_iters:12+num_iters,:] # Shift up 1 row
+            print("No")
 
         else:
             model_init = True
             model_end = 12 + num_iters + 1
-            print("Model initialized. Iterations needed: ", num_iters)
+            print("Model initialized. Iterations needed: {}".format(num_iters))
 
     # Detect change
     change_flag = 0
@@ -113,7 +114,7 @@ def findChange(pixel_data, figures, num_bands):
         change_eval = 0 
 
         for i in range(0,num_bands):    # For each band
-            residual_val = np.absolute(new_obs[i+1] - model_list[i].get_predicted(new_obs[0])) / (model_list[i].get_rmse()*2)
+            residual_val = (new_obs[i+1] - model_list[i].get_predicted(new_obs[0])) / (model_list[i].get_rmse()*2)
             change_eval += residual_val
 
         if(change_eval <= 1):

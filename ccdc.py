@@ -97,7 +97,6 @@ def findChange(pixel_data, figures, num_bands):
         if(total_slope_eval > 1 or total_start_eval > 1 or total_end_eval > 1):
             num_iters += 1
             model_data = pixel_data[0+num_iters:12+num_iters,:] # Shift up 1 row
-            print("No")
 
         else:
             model_init = True

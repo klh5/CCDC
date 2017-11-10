@@ -4,11 +4,12 @@ from scipy.interpolate import interp1d
 import sys
 from makeModel import MakeCCDCModel
 from removeOutliers import RLMRemoveOutliers
+from datetime import datetime
 
 # Set up list of models
 model_list = [None for i in range(0,7)]     # List of models, one for each band
 
-def plot_data(data_to_plot, figures, num_bands):
+def plot_data(data_to_plot, plot_list, num_bands):
     
     """Creates seperate plots for each of the bands"""
 
@@ -17,13 +18,12 @@ def plot_data(data_to_plot, figures, num_bands):
     six_pi_div_T = (6 * np.pi) / 365
 
     for i in range(0, num_bands):
-        ax2 = figures[i].add_subplot(111)
 
         # Plot the model
         f = interp1d(data_to_plot[:,0], model_list[i].get_coefficients()[0] + (model_list[i].get_coefficients()[1]*(np.cos(two_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[2]*(np.sin(two_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[3]*data_to_plot[:,0]) + (model_list[i].get_coefficients()[4]*(np.sin(four_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[5]*(np.sin(four_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[6]*(np.cos(six_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[7]*(np.sin(six_pi_div_T * data_to_plot[:,0]))), kind='cubic')
         xnew = np.linspace(data_to_plot[:,0].min(), data_to_plot[:,0].max(), 100)
 
-        ax2.plot(xnew, f(xnew), 'green', linewidth=1)
+        plot_list[i].plot(xnew, f(xnew), 'green', linewidth=1)
 
 def setupModels(data_all_bands, num_bands):
     
@@ -43,7 +43,18 @@ def setupModels(data_all_bands, num_bands):
         
         model_list[i] = model
 
-def findChange(pixel_data, figures, num_bands):
+def getNumYears(date_list):
+
+    """Get number of years (from Python/Rata Die date)"""
+    
+    last_date = datetime.fromordinal(int(np.amax(date_list))).strftime('%Y')
+    first_date = datetime.fromordinal(int(np.amin(date_list))).strftime('%Y')
+        
+    num_years = int(last_date) - int(first_date)
+
+    return num_years
+
+def findChange(pixel_data, figures, num_bands, num_years):
     
     """This function does two things: 
         1. Finds the next set of 12 observations without change from which the models can be initialized.
@@ -58,9 +69,14 @@ def findChange(pixel_data, figures, num_bands):
     num_iters = 0
 
     model_end = None # Store the index of the end date of the current model period
+    
+    robust_outliers = RLMRemoveOutliers()
 
     # Model initialization sequence
     while(model_init == False):
+        
+        # Screen for outliers
+        model_data = robust_outliers.clean_data(model_data, num_years)
         
         num_data_points = len(model_data)
         
@@ -151,29 +167,35 @@ def main():
     num_bands = data_in.shape[1] - 2
 
     # One figure for each band - makes the plots much simpler
-    fig_list = []
+    plt_list = []
     
     # Sort data by date
     data_in = data_in[np.argsort(data_in[:,0])]
     
     # Only select clear pixels (0 is clear land; 1 is clear water)
-    data_in = data_in[data_in[:,num_bands+1] < 2]
-
-    # Screen for any remaining snow or cloud pixels missed by Fmask
-    robust_outliers = RLMRemoveOutliers()
-    next_data = robust_outliers.clean_data(data_in)
+    next_data = data_in[data_in[:,num_bands+1] < 2]
+    
+    # Get the number of years covered by the dataset
+    num_years = getNumYears(next_data[:,0])
 
     # Decide on number of coefficients based on how many clear observations are left...
     
+    fig = plt.figure()
+    
     for i in range(0, num_bands):
-        fig_list.append(plt.figure("Band" + str(i+1)))
-        ax1 = fig_list[i].add_subplot(111)
-        ax1.plot(next_data[:,0], next_data[:,i+1], 'o', color='black', label='Original data', markersize=2)
+        plt_list.append(fig.add_subplot(num_bands, 1, i+1))
+        plt_list[i].plot(next_data[:,0], next_data[:,i+1], 'o', color='black', label='Original data', markersize=2)
+        plt_name = "Band " + str(i)
+        plt_list[i].set_ylabel(plt_name)
+    
 
     # We need at least 15 clear observations
     while(len(next_data) >= 15):
         
-        next_data = findChange(next_data, fig_list, num_bands)
+        if(getNumYears(next_data[:,0]) > 0):
+            next_data = findChange(next_data, plt_list, num_bands, num_years)
+        else:
+            break
 
     # Once there is no more data to process, plot the results
     plt.legend(['Original data', 'Lasso fit'])

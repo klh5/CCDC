@@ -9,20 +9,12 @@ class RLMRemoveOutliers(object):
         self.T = 365
         self.two_pi_div_T = (2 * np.pi) / self.T
     
-    def clean_data(self, pixel_data):
+    def clean_data(self, pixel_data, num_years):
         
         """Extracts the Band 2 and Band 5 data, which are used to build RLMs for detecting cloud and snow outliers"""
     
         # Extract list of dates
         julian_dates = pixel_data[:,0]
-        
-        # Get number of years (from Python/Rata Die date)
-        last_date = datetime.fromordinal(int(np.amax(julian_dates))).strftime('%Y')
-        first_date = datetime.fromordinal(int(np.amin(julian_dates))).strftime('%Y')
-
-        num_years = int(last_date) - int(first_date)
-
-        print("Years of data: {}".format(num_years))
 
         # Extract band 2 data
         band2_ref = pixel_data[:,1]

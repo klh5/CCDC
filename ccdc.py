@@ -177,8 +177,9 @@ def main():
     
     # Get the number of years covered by the dataset
     num_years = getNumYears(next_data[:,0])
-
-    # Decide on number of coefficients based on how many clear observations are left...
+    
+    # Get total number of clear observations in the dataset
+    num_clear_obs = len(next_data)
     
     fig = plt.figure()
     
@@ -188,11 +189,20 @@ def main():
         plt_name = "Band " + str(i)
         plt_list[i].set_ylabel(plt_name)
     
-
-    # We need at least 15 clear observations
-    while(len(next_data) >= 15):
+    # We need at least 12 clear observations (6 + 6 to detect change)
+    while(len(next_data) >= 12):
         
         if(getNumYears(next_data[:,0]) > 0):
+            
+            #if(num_clear_obs >= 12 and num_clear_obs < 24):
+            # Use simple model
+            
+            #elif(num_clear_obs >= 24 and num_clear_obs < 30):
+            # Use advanced model
+            
+            #elif(num_clear_obs >= 30):
+            # Use full model
+            
             next_data = findChange(next_data, plt_list, num_bands, num_years)
         else:
             break

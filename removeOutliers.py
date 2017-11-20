@@ -7,7 +7,7 @@ class RLMRemoveOutliers(object):
     def __init__(self):
         
         self.T = 365
-        self.two_pi_div_T = (2 * np.pi) / self.T
+        self.pi_val = (2 * np.pi) / self.T
     
     def clean_data(self, pixel_data, num_years):
         
@@ -49,27 +49,29 @@ class RLMRemoveOutliers(object):
 
         terms = []
         
-        two_pi_div_NT = (2 * np.pi) / (N * self.T)
+        pi_val_change = (2 * np.pi) / (N * self.T)
 
         a0 = band_data / band_data
         terms.append(a0)
 
-        a1i = np.cos(self.two_pi_div_T * julian_dates)
+        a1i = np.cos(self.pi_val * julian_dates)
         terms.append(a1i)
     
-        b1i = np.sin(self.two_pi_div_T * julian_dates)
+        b1i = np.sin(self.pi_val * julian_dates)
         terms.append(b1i)
     
-        a2i = np.cos(two_pi_div_NT * julian_dates)
+        a2i = np.cos(pi_val_change * julian_dates)
         terms.append(a2i)
         
-        b2i = np.sin(two_pi_div_NT * julian_dates)
+        b2i = np.sin(pi_val_change * julian_dates)
         terms.append(b2i)
         
         terms = np.array(terms).T
             
-        rlm_model = sm.RLM(band_data, terms, M=sm.robust.norms.HuberT())
-        coeff_list = rlm_model.fit().params
+        rlm_model = sm.RLM(band_data, terms, M=sm.robust.norms.TukeyBiweight())
+        
+        # Paper suggests a maximum of 5 iterations
+        coeff_list = rlm_model.fit(maxiter=5).params
         
         return coeff_list
     
@@ -77,12 +79,12 @@ class RLMRemoveOutliers(object):
         
         """Goes through each observation and makes a list of outliers"""
         
-        two_pi_div_NT = (2 * np.pi) / (N * self.T)
+        pi_val_change = (2 * np.pi) / (N * self.T)
         outliers = []
     
         for index, row in enumerate(band_data):
 
-            predicted_value = coefficients[0] + (coefficients[1] * np.cos(self.two_pi_div_T * row[0])) + (coefficients[2] * np.sin(self.two_pi_div_T * row[0])) + (coefficients[3] * np.cos(two_pi_div_NT * row[0])) + (coefficients[4] * np.sin(two_pi_div_NT * row[0]))
+            predicted_value = coefficients[0] + (coefficients[1] * np.cos(self.pi_val * row[0])) + (coefficients[2] * np.sin(self.pi_val * row[0])) + (coefficients[3] * np.cos(pi_val_change * row[0])) + (coefficients[4] * np.sin(pi_val_change * row[0]))
             
             difference = row[1] - predicted_value
 

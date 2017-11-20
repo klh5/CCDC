@@ -13,14 +13,14 @@ def plot_data(data_to_plot, plot_list, num_bands):
     
     """Creates seperate plots for each of the bands"""
 
-    two_pi_div_T = (2 * np.pi) / 365
-    four_pi_div_T = (4 * np.pi) / 365
-    six_pi_div_T = (6 * np.pi) / 365
+    pi_val_simple = (2 * np.pi) / 365
+    pi_val_advanced = (4 * np.pi) / 365
+    pi_val_full = (6 * np.pi) / 365
 
     for i in range(0, num_bands):
 
         # Plot the model
-        f = interp1d(data_to_plot[:,0], model_list[i].get_coefficients()[0] + (model_list[i].get_coefficients()[1]*(np.cos(two_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[2]*(np.sin(two_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[3]*data_to_plot[:,0]) + (model_list[i].get_coefficients()[4]*(np.sin(four_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[5]*(np.sin(four_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[6]*(np.cos(six_pi_div_T * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[7]*(np.sin(six_pi_div_T * data_to_plot[:,0]))), kind='cubic')
+        f = interp1d(data_to_plot[:,0], model_list[i].get_coefficients()[0] + (model_list[i].get_coefficients()[1]*(np.cos(pi_val_simple * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[2]*(np.sin(pi_val_simple * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[3]*data_to_plot[:,0]) + (model_list[i].get_coefficients()[4]*(np.sin(pi_val_advanced * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[5]*(np.sin(pi_val_advanced * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[6]*(np.cos(pi_val_full * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[7]*(np.sin(pi_val_full * data_to_plot[:,0]))), kind='cubic')
         xnew = np.linspace(data_to_plot[:,0].min(), data_to_plot[:,0].max(), 100)
 
         plot_list[i].plot(xnew, f(xnew), 'green', linewidth=1)
@@ -69,14 +69,9 @@ def findChange(pixel_data, figures, num_bands, num_years):
     num_iters = 0
 
     model_end = None # Store the index of the end date of the current model period
-    
-    robust_outliers = RLMRemoveOutliers()
 
     # Model initialization sequence
     while(model_init == False):
-        
-        # Screen for outliers
-        model_data = robust_outliers.clean_data(model_data, num_years)
         
         num_data_points = len(model_data)
         
@@ -180,6 +175,10 @@ def main():
     
     # Get total number of clear observations in the dataset
     num_clear_obs = len(next_data)
+    
+    # Screen for outliers
+    robust_outliers = RLMRemoveOutliers()
+    next_data = robust_outliers.clean_data(next_data, num_years)
     
     fig = plt.figure()
     

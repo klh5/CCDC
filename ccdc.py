@@ -1,6 +1,6 @@
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.interpolate import interp1d
 import sys
 from makeModel import MakeCCDCModel
 from removeOutliers import RLMRemoveOutliers
@@ -146,25 +146,25 @@ def main():
     """Program runs from here"""
     
     if(len(sys.argv) > 1):
-        data_in = np.loadtxt(sys.argv[1], delimiter = ',')
+        data_in = pd.read_csv(sys.argv[1])
     else:
         print("No data file specified. Exiting")
         sys.exit()
 
     # Get number of bands, which will be the number of columns - 2
-    num_bands = data_in.shape[1] - 2
+    num_bands = len(data_in.columns) - 2
 
     # One figure for each band - makes the plots much simpler
     plt_list = []
     
     # Sort data by date
-    data_in = data_in[np.argsort(data_in[:,0])]
+    data_in = data_in.sort_values(by=['datetime'])
     
     # Only select clear pixels (0 is clear land; 1 is clear water)
-    next_data = data_in[data_in[:,num_bands+1] < 2]
+    next_data = data_in[data_in.qa < 2]
     
     # Get the number of years covered by the dataset
-    num_years = getNumYears(next_data[:,0])
+    num_years = getNumYears(next_data.datetime)
     
     # Get total number of clear observations in the dataset
     num_clear_obs = len(next_data)
@@ -176,11 +176,11 @@ def main():
     fig = plt.figure()
 
     # Set up basic plots with original data    
-    for i in range(0, num_bands):
-        plt_list.append(fig.add_subplot(num_bands, 1, i+1))
-        plt_list[i].plot(next_data[:,0], next_data[:,i+1], 'o', color='black', label='Original data', markersize=2)
-        plt_name = "Band " + str(i)
-        plt_list[i].set_ylabel(plt_name)
+    #for i in range(0, num_bands):
+        #plt_list.append(fig.add_subplot(num_bands, 1, i+1))
+        #plt_list[i].plot(next_data[:,0], next_data[:,i+1], 'o', color='black', label='Original data', markersize=2)
+        #plt_name = "Band " + str(i)
+        #plt_list[i].set_ylabel(plt_name)
     
     # We need at least 12 clear observations (6 + 6 to detect change)
     #while(len(next_data) >= 12):
@@ -207,8 +207,8 @@ def main():
             #break
 
     # Once there is no more data to process, plot the results
-    plt.legend(['Original data', 'Change point'])
-    plt.show()
+    #plt.legend(['Original data', 'Change point'])
+    #plt.show()
 
 
 if __name__ == "__main__":

@@ -9,21 +9,15 @@ from datetime import datetime
 # Set up list of models
 model_list = [None for i in range(0,7)]     # List of models, one for each band
 
-def plot_data(data_to_plot, plot_list, num_bands):
-    
-    """Creates seperate plots for each of the bands"""
+def add_change_marker(plot_list, num_bands, change_point, obs_data):
 
-    pi_val_simple = (2 * np.pi) / 365
-    pi_val_advanced = (4 * np.pi) / 365
-    pi_val_full = (6 * np.pi) / 365
+   """ Adds a vertical line to each plot every time change is detected """
 
-    for i in range(0, num_bands):
+   for i in range(0, num_bands):
+       y_min = np.amin(obs_data[:,i+1])
+       y_max = np.amax(obs_data[:,i+1])
 
-        # Plot the model
-        f = interp1d(data_to_plot[:,0], model_list[i].get_coefficients()[0] + (model_list[i].get_coefficients()[1]*(np.cos(pi_val_simple * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[2]*(np.sin(pi_val_simple * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[3]*data_to_plot[:,0]) + (model_list[i].get_coefficients()[4]*(np.sin(pi_val_advanced * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[5]*(np.sin(pi_val_advanced * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[6]*(np.cos(pi_val_full * data_to_plot[:,0]))) + (model_list[i].get_coefficients()[7]*(np.sin(pi_val_full * data_to_plot[:,0]))), kind='cubic')
-        xnew = np.linspace(data_to_plot[:,0].min(), data_to_plot[:,0].max(), 100)
-
-        plot_list[i].plot(xnew, f(xnew), 'green', linewidth=1)
+       plot_list[i].plot([change_point, change_point], [y_min, y_max], 'r', linewidth=1)
 
 def setupModels(data_all_bands, num_bands):
     
@@ -54,15 +48,15 @@ def getNumYears(date_list):
 
     return num_years
 
-def findChange(pixel_data, figures, num_bands, num_years):
+def findChange(pixel_data, figures, num_bands, num_years, init_obs):
     
     """This function does two things: 
-        1. Finds the next set of 12 observations without change from which the models can be initialized.
+        1. Finds the next set of 6/12/18/24 observations without change from which the models can be initialized.
         2. Continues to add data points to the model until either a new breakpoint is detected, or there
         are not enough observations remaining."""
 
-    # Subset first 12 clear observations for model initialisation
-    model_data = pixel_data[0:12,:]
+    # Subset first n clear observations for model initialisation
+    model_data = pixel_data[0:init_obs,:]
 
     # Start off with the model uninitialized
     model_init = False
@@ -75,7 +69,7 @@ def findChange(pixel_data, figures, num_bands, num_years):
         
         num_data_points = len(model_data)
         
-        if(num_data_points < 6):
+        if(num_data_points < init_obs):
             print("Not enough data points left to initialize model.")
             return []
     
@@ -107,11 +101,11 @@ def findChange(pixel_data, figures, num_bands, num_years):
 
         if(total_slope_eval > 1 or total_start_eval > 1 or total_end_eval > 1):
             num_iters += 1
-            model_data = pixel_data[0+num_iters:12+num_iters,:] # Shift up 1 row
+            model_data = pixel_data[0+num_iters:init_obs+num_iters,:] # Shift up 1 row
 
         else:
             model_init = True
-            model_end = 12 + num_iters + 1
+            model_end = init_obs + num_iters + 1
             print("Model initialized. Iterations needed: {}".format(num_iters))
 
     # Detect change
@@ -138,14 +132,13 @@ def findChange(pixel_data, figures, num_bands, num_years):
     
         if(change_flag == 6):
             print("Change detected!")
-            plot_data(model_data, figures, num_bands)
+            add_change_marker(figures, num_bands, new_obs[0], pixel_data)
             return pixel_data[model_end:,]
         
         # Need to get the next observation
         model_end += 1
     
     # No change detected, end of data reached
-    plot_data(model_data, figures, num_bands)
     return []
 
 def main():
@@ -181,7 +174,8 @@ def main():
     next_data = robust_outliers.clean_data(next_data, num_years)
     
     fig = plt.figure()
-    
+
+    # Set up basic plots with original data    
     for i in range(0, num_bands):
         plt_list.append(fig.add_subplot(num_bands, 1, i+1))
         plt_list[i].plot(next_data[:,0], next_data[:,i+1], 'o', color='black', label='Original data', markersize=2)
@@ -193,21 +187,27 @@ def main():
         
         if(getNumYears(next_data[:,0]) > 0):
             
-            #if(num_clear_obs >= 12 and num_clear_obs < 24):
-            # Use simple model
+            if(num_clear_obs >= 12 and num_clear_obs < 18):
+            # Use simple model with initialization period of 6 obs
+               next_data = findChange(next_data, plt_list, num_bands, num_years, 6)
             
-            #elif(num_clear_obs >= 24 and num_clear_obs < 30):
-            # Use advanced model
+            elif(num_clear_obs >= 18 and num_clear_obs < 24):
+               # Use simple model with initialization period of 12 obs
+               next_data = findChange(next_data, plt_list, num_bands, num_years, 12)
+
+            elif(num_clear_obs >= 24 and num_clear_obs < 30):
+               # Use advanced model with initialization period of 18 obs
+               next_data = findChange(next_data, plt_list, num_bands, num_years, 18)
             
-            #elif(num_clear_obs >= 30):
-            # Use full model
+            elif(num_clear_obs >= 30):
+               # Use full model with initialisation period of 24 obs
+               next_data = findChange(next_data, plt_list, num_bands, num_years, 24)
             
-            next_data = findChange(next_data, plt_list, num_bands, num_years)
         else:
             break
 
     # Once there is no more data to process, plot the results
-    plt.legend(['Original data', 'Lasso fit'])
+    plt.legend(['Original data', 'Change point'])
     plt.show()
 
 

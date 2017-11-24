@@ -25,16 +25,10 @@ class RLMRemoveOutliers(object):
         self.band4_model = self.makeRLMModel(pixel_data[['datetime', 'band_4']])
         self.band5_model = self.makeRLMModel(pixel_data[['datetime', 'band_5']])
 
-        #predictions = fcoeffs.predict()
-        #print(predictions, band2_only)
-
-        #print(fcoeffs.params)
-        #print(self.band2_coeffs)
-
-        #outliers = self.removeBadPixels(outlier_bands)
+        outliers = self.removeBadPixels(pixel_data)
     
         # Remove outliers from data
-        #pixel_data = np.delete(pixel_data, outliers, axis=0)
+        pixel_data = pixel_data.drop(outliers)
     
         return pixel_data
     
@@ -45,7 +39,7 @@ class RLMRemoveOutliers(object):
         
         band_data.columns = ['datetime', 'reflectance']
 
-        rlm_model = smf.rlm('reflectance ~ 1 + (np.cos(self.pi_val * datetime) + np.sin(self.pi_val * datetime)) + (np.cos(self.pi_val_change * datetime)) + (np.sin(self.pi_val_change * datetime))', band_data)
+        rlm_model = smf.rlm('reflectance ~ (np.cos(self.pi_val * datetime) + np.sin(self.pi_val * datetime)) + (np.cos(self.pi_val_change * datetime)) + (np.sin(self.pi_val_change * datetime))', band_data)
         rlm_result = rlm_model.fit(maxiter=5)
         
         return rlm_result
@@ -55,29 +49,27 @@ class RLMRemoveOutliers(object):
         """Goes through each observation and makes a list of outliers"""
         
         outliers = []
+        
+        band_data['band_2_pred'] = self.band2_model.predict()
+        band_data['band_4_pred'] = self.band4_model.predict()
+        band_data['band_5_pred'] = self.band5_model.predict()
     
-        for index, row in enumerate(band_data):
+        for index, row in band_data.iterrows():
 
             # Get B2 delta
-            b2_predicted = self.band2_coeffs[0] + (self.band2_coeffs[1] * np.cos(self.pi_val * row[0])) + (self.band2_coeffs[2] * np.sin(self.pi_val * row[0])) + (self.band2_coeffs[3] * np.cos(self.pi_val_change * row[0])) + (self.band2_coeffs[4] * np.sin(self.pi_val_change * row[0]))
-
-            b2_delta = row[1] - b2_predicted
+            b2_delta = row['band_2'] - row['band_2_pred']
 
             if(b2_delta > 400):
                 outliers.append(index)
 
             else:
                 # Get B4 delta
-                b4_predicted = self.band4_coeffs[0] + (self.band4_coeffs[1] * np.cos(self.pi_val * row[0])) + (self.band4_coeffs[2] * np.sin(self.pi_val * row[0])) + (self.band4_coeffs[3] * np.cos(self.pi_val_change * row[0])) + (self.band4_coeffs[4] * np.sin(self.pi_val_change * row[0]))
-
-                b4_delta = row[2] - b4_predicted
+                b4_delta = row['band_4'] - row['band_4_pred']
 
                 if(b4_delta < -400):
 
                     # Get B5 delta
-                    b5_predicted = self.band5_coeffs[0] + (self.band5_coeffs[1] * np.cos(self.pi_val * row[0])) + (self.band5_coeffs[2] * np.sin(self.pi_val * row[0])) + (self.band5_coeffs[3] * np.cos(self.pi_val_change * row[0])) + (self.band5_coeffs[4] * np.sin(self.pi_val_change * row[0]))
-
-                    b5_delta = row[3] - b5_predicted
+                    b5_delta = row['band_5'] - row['band_5_pred']
 
                     if(b5_delta < -400):
                         outliers.append(index)

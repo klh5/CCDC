@@ -7,13 +7,13 @@ from removeOutliers import RLMRemoveOutliers
 from datetime import datetime
 
 # Set up list of models
-model_list = [None for i in range(0,7)]     # List of models, one for each band
+model_list = [None for i in range(7)]     # List of models, one for each band
 
 def add_change_marker(plot_list, num_bands, change_point, obs_data):
 
    """ Adds a vertical line to each plot every time change is detected """
 
-   for i in range(0, num_bands):
+   for i in range(num_bands):
        y_min = np.amin(obs_data[:,i+1])
        y_max = np.amax(obs_data[:,i+1])
 
@@ -27,7 +27,7 @@ def setupModels(data_all_bands, num_bands):
     julian_dates = data_all_bands[:,0]
     
     # Create the model
-    for i in range(0, num_bands):
+    for i in range(num_bands):
         
         reflectance = data_all_bands[:,i+1]
         
@@ -87,7 +87,7 @@ def findChange(pixel_data, figures, num_bands, num_years, init_obs):
         total_end_eval = 0
 
         # Check for change during the initialization period. We need 12 observations with no change
-        for i in range(0, num_bands): # For each Landsat band
+        for i in range(num_bands): # For each Landsat band
             
             for row in model_data:
                 slope_val = ((model_list[i].get_coefficients()[3]) * row[0]) / 3 * (model_list[i].get_rmse() / total_time)
@@ -117,7 +117,7 @@ def findChange(pixel_data, figures, num_bands, num_years, init_obs):
 
         change_eval = 0 
 
-        for i in range(0,num_bands):    # For each band
+        for i in range(num_bands):    # For each band
             residual_val = (new_obs[i+1] - model_list[i].get_predicted(new_obs[0])) / (model_list[i].get_rmse()*2)
             change_eval += residual_val
 
@@ -176,39 +176,39 @@ def main():
     fig = plt.figure()
 
     # Set up basic plots with original data    
-    #for i in range(0, num_bands):
-        #plt_list.append(fig.add_subplot(num_bands, 1, i+1))
-        #plt_list[i].plot(next_data[:,0], next_data[:,i+1], 'o', color='black', label='Original data', markersize=2)
-        #plt_name = "Band " + str(i)
-        #plt_list[i].set_ylabel(plt_name)
+    for i in range(num_bands):
+        plt_list.append(fig.add_subplot(num_bands, 1, i+1))
+        band_col = "band_" + str(i+1)
+        plt_list[i].plot(next_data['datetime'], next_data.iloc[:,i+1], 'o', color='black', label='Original data', markersize=2)
+        plt_list[i].set_ylabel(band_col)
     
     # We need at least 12 clear observations (6 + 6 to detect change)
-    #while(len(next_data) >= 12):
+    while(len(next_data) >= 12):
         
-        #if(getNumYears(next_data[:,0]) > 0):
+        if(getNumYears(next_data[:,0]) > 0):
             
-            #if(num_clear_obs >= 12 and num_clear_obs < 18):
+            if(num_clear_obs >= 12 and num_clear_obs < 18):
             # Use simple model with initialization period of 6 obs
-               #next_data = findChange(next_data, plt_list, num_bands, num_years, 6)
+               next_data = findChange(next_data, plt_list, num_bands, num_years, 6)
             
-            #elif(num_clear_obs >= 18 and num_clear_obs < 24):
+            elif(num_clear_obs >= 18 and num_clear_obs < 24):
                # Use simple model with initialization period of 12 obs
-               #next_data = findChange(next_data, plt_list, num_bands, num_years, 12)
+               next_data = findChange(next_data, plt_list, num_bands, num_years, 12)
 
-            #elif(num_clear_obs >= 24 and num_clear_obs < 30):
+            elif(num_clear_obs >= 24 and num_clear_obs < 30):
                # Use advanced model with initialization period of 18 obs
-               #next_data = findChange(next_data, plt_list, num_bands, num_years, 18)
+               next_data = findChange(next_data, plt_list, num_bands, num_years, 18)
             
-            #elif(num_clear_obs >= 30):
+            elif(num_clear_obs >= 30):
                # Use full model with initialisation period of 24 obs
-               #next_data = findChange(next_data, plt_list, num_bands, num_years, 24)
+               next_data = findChange(next_data, plt_list, num_bands, num_years, 24)
             
-        #else:
-            #break
+        else:
+            break
 
     # Once there is no more data to process, plot the results
-    #plt.legend(['Original data', 'Change point'])
-    #plt.show()
+    plt.legend(['Original data', 'Change point'])
+    plt.show()
 
 
 if __name__ == "__main__":

@@ -166,9 +166,6 @@ def main():
     # Get the number of years covered by the dataset
     num_years = getNumYears(next_data.datetime)
     
-    # Get total number of clear observations in the dataset
-    num_clear_obs = len(next_data)
-    
     # Screen for outliers
     robust_outliers = RLMRemoveOutliers()
     next_data = robust_outliers.clean_data(next_data, num_years)
@@ -183,28 +180,31 @@ def main():
         plt_list[i].set_ylabel(band_col)
     
     # We need at least 12 clear observations (6 + 6 to detect change)
-    while(len(next_data) >= 12):
+    #while(len(next_data) >= 12):
         
-        if(getNumYears(next_data[:,0]) > 0):
+        #if(getNumYears(next_data['datetime']) > 0):
             
-            if(num_clear_obs >= 12 and num_clear_obs < 18):
+            # Get total number of clear observations in the dataset
+            #num_clear_obs = len(next_data)
+    
+            #if(num_clear_obs >= 12 and num_clear_obs < 18):
             # Use simple model with initialization period of 6 obs
-               next_data = findChange(next_data, plt_list, num_bands, num_years, 6)
+               #next_data = findChange(next_data, plt_list, num_bands, num_years, 6)
             
-            elif(num_clear_obs >= 18 and num_clear_obs < 24):
+            #elif(num_clear_obs >= 18 and num_clear_obs < 24):
                # Use simple model with initialization period of 12 obs
-               next_data = findChange(next_data, plt_list, num_bands, num_years, 12)
+               #next_data = findChange(next_data, plt_list, num_bands, num_years, 12)
 
-            elif(num_clear_obs >= 24 and num_clear_obs < 30):
+            #elif(num_clear_obs >= 24 and num_clear_obs < 30):
                # Use advanced model with initialization period of 18 obs
-               next_data = findChange(next_data, plt_list, num_bands, num_years, 18)
+               #next_data = findChange(next_data, plt_list, num_bands, num_years, 18)
             
-            elif(num_clear_obs >= 30):
+            #elif(num_clear_obs >= 30):
                # Use full model with initialisation period of 24 obs
-               next_data = findChange(next_data, plt_list, num_bands, num_years, 24)
+               #next_data = findChange(next_data, plt_list, num_bands, num_years, 24)
             
-        else:
-            break
+        #else:
+            #break
 
     # Once there is no more data to process, plot the results
     plt.legend(['Original data', 'Change point'])

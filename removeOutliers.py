@@ -1,5 +1,4 @@
 import numpy as np
-import statsmodels.api as sm
 from datetime import datetime
 import statsmodels.formula.api as smf
 import pandas as pd
@@ -32,14 +31,13 @@ class RLMRemoveOutliers(object):
     
         return pixel_data
     
-
     def makeRLMModel(self, band_data):
         
         """Builds the model and stores the coefficients"""
         
         band_data.columns = ['datetime', 'reflectance']
         
-        rlm_model = smf.rlm('reflectance ~ (np.cos(self.pi_val * datetime) + np.sin(self.pi_val * datetime)) + (np.cos(self.pi_val_change * datetime)) + (np.sin(self.pi_val_change * datetime))', band_data)
+        rlm_model = smf.rlm('reflectance ~ np.cos(self.pi_val * datetime) + np.sin(self.pi_val * datetime) + np.cos(self.pi_val_change * datetime) + np.sin(self.pi_val_change * datetime)', band_data)
         rlm_result = rlm_model.fit(maxiter=5)
         
         return rlm_result

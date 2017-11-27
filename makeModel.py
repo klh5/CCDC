@@ -1,67 +1,50 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
+import statsmodels.formula.api as smf
 import statsmodels.api as sm
 
 class MakeCCDCModel(object):
 
-    def __init__(self):
+    def __init__(self, band_data):
         
-        self.coefficients = None
         self.T = 365
-        self.two_pi_div_T = (2 * np.pi) / self.T
-        self.four_pi_div_T = (4 * np.pi) / self.T
-        self.six_pi_div_T = (2 * np.pi) / self.T
+        self.pi_val_simple = (2 * np.pi) / self.T
+        self.pi_val_advanced = (4 * np.pi) / self.T
+        self.pi_val_full = (6 * np.pi) / self.T
+        self.band_data = band_data
+        
+        self.lasso_model = None
         self.RMSE = None
+        self.coefficients = None
 
-    def fit_model(self, reflectance, julian_dates):
+    def fit_model(self, model_num):
         
         """Finds the coefficients by fitting an OLS model to the data"""
-
-        terms = []
-
-        a0i = reflectance / reflectance
-        terms.append(a0i)
-
-        a1i = np.cos(self.two_pi_div_T * julian_dates)
-        terms.append(a1i)
-    
-        b1i = np.sin(self.two_pi_div_T * julian_dates)
-        terms.append(b1i)
-    
-        c1i = (julian_dates - julian_dates) + julian_dates
-        terms.append(c1i)
-
-        a2i = np.cos(self.four_pi_div_T * julian_dates)
-        terms.append(a2i)
-
-        b2i = np.sin(self.four_pi_div_T * julian_dates)
-        terms.append(b2i)
-
-        a3i = np.cos(self.six_pi_div_T * julian_dates)
-        terms.append(a3i)
-
-        b3i = np.sin(self.six_pi_div_T * julian_dates)
-        terms.append(b3i)
-    
-        terms = np.array(terms).T
         
-        lasso_model = sm.OLS(reflectance, terms)
-        lasso_results = lasso_model.fit_regularized(method='elastic_net', alpha=0.01, L1_wt=1.0)
-        self.coefficients = lasso_results.params
+        if(model_num == 6 or model_num == 12):
+            lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * datetime) + np.sin(self.pi_val_simple * datetime) + datetime', self.band_data)
         
-        predicted_vals = [self.get_predicted(row) for row in julian_dates]
+        elif(model_num == 18):
+            lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * datetime) + np.sin(self.pi_val_simple * datetime) + np.cos(self.pi_val_advanced * datetime) + np.sin(self.pi_val_advanced * datetime) + datetime', self.band_data)
+        
+        elif(model_num == 24):
+            lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * datetime) + np.sin(self.pi_val_simple * datetime) + np.cos(self.pi_val_advanced * datetime) + np.sin(self.pi_val_advanced * datetime) + np.cos(self.pi_val_full * datetime) + np.sin(self.pi_val_full * datetime) + datetime', self.band_data)
+        
+        self.lasso_model = lasso_model.fit_regularized(method='elastic_net', alpha=0.01, L1_wt=1.0)
+        
+        self.band_data['predicted'] = self.lasso_model.predict()
     
-        self.RMSE = np.sqrt(np.mean(((predicted_vals - reflectance) ** 2)))
+        self.RMSE = np.sqrt(np.mean(((self.band_data['predicted'] - self.band_data['reflectance']) ** 2)))
         
-    def get_predicted(self, julian_date):
+        self.coefficients = self.lasso_model.params
         
-        """Returns the predicted value for a given julian date based on the model coefficients from OLS"""
-
-        new_pixel = self.coefficients[0] + (self.coefficients[1]*(np.cos(self.two_pi_div_T * julian_date))) + (self.coefficients[2]*(np.sin(self.two_pi_div_T * julian_date))) + (self.coefficients[3]*julian_date) + (self.coefficients[4]*(np.sin(self.four_pi_div_T * julian_date))) + (self.coefficients[5]*(np.sin(self.four_pi_div_T * julian_date))) + (self.coefficients[6]*(np.cos(self.six_pi_div_T * julian_date)))+ (self.coefficients[7]*(np.sin(self.six_pi_div_T * julian_date)))
-            
-        return new_pixel
+    def get_prediction(self, date_to_predict):
     
+        """Returns a predicted value for a give date based on the current model"""
+    
+        return self.lasso_model.predict({'datetime': [date_to_predict]})
+        
     def get_coefficients(self):
         
         """Returns the list of coefficients for this model"""
@@ -75,6 +58,10 @@ class MakeCCDCModel(object):
     
         if(self.RMSE != None):
             return self.RMSE
+
+    def get_band_data(self):
+
+        return self.band_data
 
 
 

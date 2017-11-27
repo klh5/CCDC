@@ -2,7 +2,6 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 import statsmodels.formula.api as smf
-import statsmodels.api as sm
 
 class MakeCCDCModel(object):
 

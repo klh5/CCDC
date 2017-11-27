@@ -116,11 +116,12 @@ def findChange(pixel_data, figures, num_bands, num_years, init_obs):
             new_ref_obs = pixel_data.iloc[next_obs][model_num+1]
             residual_val = (new_ref_obs - band_model.get_prediction(new_date)[0]) / (band_model.get_rmse() * 2)
             change_eval += residual_val
+    
+        new_obs = pixel_data.iloc[next_obs]
         
         if(change_eval <= 1):
             print("Adding new data point")
-            new_obs = pixel_data.iloc[next_obs]
-            pd.concat([model_data, new_obs])
+            model_data.append(new_obs, ignore_index=True)
             setupModels(model_data, num_bands, init_obs)
             change_flag = 0 # Reset change flag because we have an inlier
 

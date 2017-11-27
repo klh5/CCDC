@@ -17,7 +17,7 @@ def add_change_marker(plot_list, num_bands, change_point, obs_data):
        y_min = np.amin(obs_data.iloc[:,i+1])
        y_max = np.amax(obs_data.iloc[:,i+1])
 
-       plot_list[i].plot([change_point, change_point], [y_min, y_max], 'r', linewidth=1)
+       plot_list[i].plot([change_point, change_point], [y_min, y_max], 'r', linewidth=1, label="Change point")
 
 def setupModels(all_band_data, num_bands, init_obs):
     
@@ -159,14 +159,17 @@ def main():
     data_in = data_in.sort_values(by=['datetime'])
     
     # Only select clear pixels (0 is clear land; 1 is clear water)
-    next_data = data_in[data_in.qa < 2]
+    data_in = data_in[data_in.qa < 2]
     
     # Get the number of years covered by the dataset
-    num_years = getNumYears(next_data.datetime)
+    num_years = getNumYears(data_in['datetime'])
     
     # Screen for outliers
     robust_outliers = RLMRemoveOutliers()
-    next_data = robust_outliers.clean_data(next_data, num_years)
+    next_data = robust_outliers.clean_data(data_in, num_years)
+    
+    # Update num_years now outliers have been removed
+    num_years = getNumYears(next_data['datetime'])
     
     fig = plt.figure()
 
@@ -174,7 +177,8 @@ def main():
     for i in range(num_bands):
         plt_list.append(fig.add_subplot(num_bands, 1, i+1))
         band_col = "band_" + str(i+1)
-        plt_list[i].plot(next_data['datetime'], next_data.iloc[:,i+1], 'o', color='black', label='Original data', markersize=2)
+        plt_list[i].plot(data_in['datetime'], data_in.iloc[:,i+1], 'o', color='red', label='Original data', markersize=2)
+        plt_list[i].plot(next_data['datetime'], next_data.iloc[:,i+1], 'o', color='black', label='Data after RIRLS', markersize=3)
         plt_list[i].set_ylabel(band_col)
     
     # We need at least 12 clear observations (6 + 6 to detect change)
@@ -205,7 +209,7 @@ def main():
             break
 
     # Once there is no more data to process, plot the results
-    plt.legend(['Original data', 'Change point'])
+    plt.legend(['Original data', 'Data after RIRLS', 'Change point'])
     plt.show()
 
 

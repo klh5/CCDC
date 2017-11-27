@@ -28,7 +28,8 @@ class RLMRemoveOutliers(object):
     
         # Remove outliers from data
         pixel_data = pixel_data.drop(outliers)
-    
+        pixel_data = pixel_data.reset_index(drop=True)
+        
         return pixel_data
     
     def makeRLMModel(self, band_data):

@@ -1,6 +1,7 @@
 import numpy as np
 from datetime import datetime
 import statsmodels.formula.api as smf
+import statsmodels.api as sm
 import pandas as pd
 
 class RLMRemoveOutliers(object):
@@ -38,7 +39,7 @@ class RLMRemoveOutliers(object):
         
         band_data.columns = ['datetime', 'reflectance']
         
-        rlm_model = smf.rlm('reflectance ~ np.cos(self.pi_val * datetime) + np.sin(self.pi_val * datetime) + np.cos(self.pi_val_change * datetime) + np.sin(self.pi_val_change * datetime)', band_data)
+        rlm_model = smf.rlm('reflectance ~ np.cos(self.pi_val * datetime) + np.sin(self.pi_val * datetime) + np.cos(self.pi_val_change * datetime) + np.sin(self.pi_val_change * datetime)', band_data, M=sm.robust.norms.TukeyBiweight(c=0.4685))
         rlm_result = rlm_model.fit(maxiter=5)
         
         return rlm_result
@@ -57,19 +58,18 @@ class RLMRemoveOutliers(object):
 
             # Get B2 delta
             b2_delta = row['band_2'] - row['band_2_pred']
-
+            
             if(b2_delta > 400):
                 outliers.append(index)
 
             else:
                 # Get B4 delta
                 b4_delta = row['band_4'] - row['band_4_pred']
-
+                
                 if(b4_delta < -400):
-
                     # Get B5 delta
                     b5_delta = row['band_5'] - row['band_5_pred']
-
+                    
                     if(b5_delta < -400):
                         outliers.append(index)
 

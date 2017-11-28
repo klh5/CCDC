@@ -173,7 +173,7 @@ def main():
     # Screen for outliers
     robust_outliers = RLMRemoveOutliers()
     next_data = robust_outliers.clean_data(data_in, num_years)
-    
+
     # Update num_years now outliers have been removed
     num_years = getNumYears(next_data['datetime'])
     

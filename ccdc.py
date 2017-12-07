@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import sys
 from makeModel import MakeCCDCModel
 from removeOutliers import RLMRemoveOutliers
@@ -66,7 +67,7 @@ def init_model(pixel_data, num_bands, init_obs):
         
         if(num_data_points < init_obs):
             print("Not enough data points left to initialize model.")
-            return []
+            return None
     
         # Re-initialize the models
         setupModels(curr_obs_list, num_bands, init_obs)
@@ -82,13 +83,13 @@ def init_model(pixel_data, num_bands, init_obs):
         for band_model in model_list: # For each model
             
             for row in band_model.get_band_data().iterrows():
-                slope_val = ((band_model.get_coefficients()['datetime']) * row[0]) / 3 * (band_model.get_rmse() / total_time)
+                slope_val = np.absolute(((band_model.get_coefficients()['datetime']) * row[0])) / 3 * (band_model.get_rmse() / total_time)
                 total_slope_eval += slope_val
         
-            start_val = (band_model.get_band_data()['reflectance'].iloc[0] - band_model.get_band_data()['predicted'].iloc[0]) / (3 * band_model.get_rmse())
+            start_val = np.absolute((band_model.get_band_data()['reflectance'].iloc[0] - band_model.get_band_data()['predicted'].iloc[0])) / (3 * band_model.get_rmse())
             total_start_eval += start_val
             
-            end_val = (band_model.get_band_data()['reflectance'].iloc[num_data_points-1] - band_model.get_band_data()['predicted'].iloc[num_data_points-1]) / (3 * band_model.get_rmse())
+            end_val = np.absolute((band_model.get_band_data()['reflectance'].iloc[num_data_points-1] - band_model.get_band_data()['predicted'].iloc[num_data_points-1])) / (3 * band_model.get_rmse())
             total_end_eval += end_val
         
         if(total_slope_eval > 1 or total_start_eval > 1 or total_end_eval > 1):
@@ -107,7 +108,10 @@ def findChange(pixel_data, figures, num_bands, init_obs):
     """Continues to add data points to the model until either a new breakpoint is detected, or there
         are not enough observations remaining."""
     
-    model_data, next_obs = init_model(pixel_data, num_bands, init_obs)
+    try:
+        model_data, next_obs = init_model(pixel_data, num_bands, init_obs)
+    except TypeError:
+        return []
 
     # Detect change
     change_flag = 0
@@ -120,7 +124,7 @@ def findChange(pixel_data, figures, num_bands, init_obs):
         
         for model_num, band_model in enumerate(model_list):    # For each band
             new_ref_obs = pixel_data.iloc[next_obs][model_num+1]
-            residual_val = (new_ref_obs - band_model.get_prediction(new_date)[0]) / (band_model.get_rmse() * 2)
+            residual_val = np.absolute((new_ref_obs - band_model.get_prediction(new_date)[0])) / (band_model.get_rmse() * 2)
             change_eval += residual_val
     
         new_obs = pixel_data.iloc[next_obs]
@@ -186,6 +190,8 @@ def main():
         plt_list[i].plot(data_in['datetime'], data_in.iloc[:,i+1], 'o', color='blue', label='Original data', markersize=2)
         plt_list[i].plot(next_data['datetime'], next_data.iloc[:,i+1], 'o', color='black', label='Data after RIRLS', markersize=3)
         plt_list[i].set_ylabel(band_col)
+        myFmt = mdates.DateFormatter('%Y') # Format dates as year rather than ordinal dates
+        plt_list[i].xaxis.set_major_formatter(myFmt)
     
     # We need at least 12 clear observations (6 + 6 to detect change)
     while(len(next_data) >= 12):
@@ -216,6 +222,7 @@ def main():
 
     # Once there is no more data to process, plot the results
     plt.legend(['Original data', 'Data after RIRLS', 'Change point'])
+    plt.tight_layout()
     plt.show()
 
 

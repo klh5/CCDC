@@ -186,7 +186,7 @@ def main():
     # Set up basic plots with original data    
     for i in range(num_bands):
         plt_list.append(fig.add_subplot(num_bands, 1, i+1))
-        band_col = "band_" + str(i+1)
+        band_col = next_data.columns[i+1]
         plt_list[i].plot(data_in['datetime'], data_in.iloc[:,i+1], 'o', color='blue', label='Original data', markersize=2)
         plt_list[i].plot(next_data['datetime'], next_data.iloc[:,i+1], 'o', color='black', label='Data after RIRLS', markersize=3)
         plt_list[i].set_ylabel(band_col)

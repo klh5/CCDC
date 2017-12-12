@@ -3,9 +3,15 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import sys
+import datacube
+import xarray as xr
+from datacube.storage.masking import mask_invalid_data
 from makeModel import MakeCCDCModel
 from removeOutliers import RLMRemoveOutliers
 from datetime import datetime
+from osgeo import ogr
+from random import uniform
+
 
 # Set up list of models
 model_list = [None for i in range(5)]     # List of models, one for each band
@@ -27,7 +33,7 @@ def setupModels(all_band_data, num_bands, init_obs):
     # Create a model for each band and store it in model_list
     for i in range(num_bands):
         
-        band_data = pd.DataFrame({'datetime': all_band_data['datetime'], 'reflectance': all_band_data.iloc[:,i+1]})
+        band_data = pd.DataFrame({'time': all_band_data['time'], 'reflectance': all_band_data.iloc[:,i+1]})
         
         ccdc_model = MakeCCDCModel(band_data)
         
@@ -39,8 +45,8 @@ def getNumYears(date_list):
 
     """Get number of years (from Python/Rata Die date)"""
     
-    last_date = datetime.fromordinal(int(np.amax(date_list))).strftime('%Y')
-    first_date = datetime.fromordinal(int(np.amin(date_list))).strftime('%Y')
+    last_date = datetime.fromordinal(np.amax(date_list)).strftime('%Y')
+    first_date = datetime.fromordinal(np.amin(date_list)).strftime('%Y')
         
     num_years = int(last_date) - int(first_date)
 
@@ -73,7 +79,7 @@ def init_model(pixel_data, num_bands, init_obs):
         setupModels(curr_obs_list, num_bands, init_obs)
         
         # Get cumulative time
-        total_time = curr_obs_list['datetime'].sum()
+        total_time = curr_obs_list['time'].sum()
         
         total_slope_eval = 0
         total_start_eval = 0
@@ -83,7 +89,7 @@ def init_model(pixel_data, num_bands, init_obs):
         for band_model in model_list: # For each model
             
             for row in band_model.get_band_data().iterrows():
-                slope_val = np.absolute(((band_model.get_coefficients()['datetime']) * row[0])) / 3 * (band_model.get_rmse() / total_time)
+                slope_val = np.absolute(((band_model.get_coefficients()['time']) * row[0])) / 3 * (band_model.get_rmse() / total_time)
                 total_slope_eval += slope_val
         
             start_val = np.absolute((band_model.get_band_data()['reflectance'].iloc[0] - band_model.get_band_data()['predicted'].iloc[0])) / (3 * band_model.get_rmse())
@@ -154,76 +160,132 @@ def main():
     """Program runs from here"""
     
     if(len(sys.argv) > 1):
-        data_in = pd.read_csv(sys.argv[1])
+        num_points = int(sys.argv[1])
     else:
-        print("No data file specified. Exiting")
+        print("Number of points to analyze was not specified.")
         sys.exit()
 
-    # Get number of bands, which will be the number of columns - 2
-    num_bands = len(data_in.columns) - 2
+    dc = datacube.Datacube()
 
-    # One figure for each band - makes the plots much simpler
-    plt_list = []
-    
-    # Sort data by date
-    data_in = data_in.sort_values(by=['datetime'])
-    
-    # Only select clear pixels (0 is clear land; 1 is clear water)
-    data_in = data_in[data_in.qa < 2]
-    
-    # Get the number of years covered by the dataset
-    num_years = getNumYears(data_in['datetime'])
-    
-    # Screen for outliers
-    robust_outliers = RLMRemoveOutliers()
-    next_data = robust_outliers.clean_data(data_in, num_years)
+    # Set some spatial boundaries for the data
+    BLLat = -27.0
+    BLLon = 146.0
+    BRLat = -27.0
+    BRLon = 149.0
+    TLLat = -25.0
+    TLLon = 146.0
+    TRLat = -25.0
+    TRLon = 149.0
 
-    # Update num_years now outliers have been removed
-    num_years = getNumYears(next_data['datetime'])
-    
-    fig = plt.figure()
+    boundary = ogr.Geometry(ogr.wkbLinearRing)
+    boundary.AddPoint(BLLat, BLLon)
+    boundary.AddPoint(BRLat, BRLon)
+    boundary.AddPoint(TRLat, TRLon)
+    boundary.AddPoint(TLLat, TLLon)
+    boundary.AddPoint(BLLat, BLLon)
 
-    # Set up basic plots with original data    
-    for i in range(num_bands):
-        plt_list.append(fig.add_subplot(num_bands, 1, i+1))
-        band_col = next_data.columns[i+1]
-        plt_list[i].plot(data_in['datetime'], data_in.iloc[:,i+1], 'o', color='blue', label='Original data', markersize=2)
-        plt_list[i].plot(next_data['datetime'], next_data.iloc[:,i+1], 'o', color='black', label='Data after RIRLS', markersize=3)
-        plt_list[i].set_ylabel(band_col)
-        myFmt = mdates.DateFormatter('%Y') # Format dates as year rather than ordinal dates
-        plt_list[i].xaxis.set_major_formatter(myFmt)
-    
-    # We need at least 12 clear observations (6 + 6 to detect change)
-    while(len(next_data) >= 12):
+    poly = ogr.Geometry(ogr.wkbPolygon)
+    poly.AddGeometry(boundary)
+
+    envelope = poly.GetEnvelope()
+
+    min_lat = envelope[0]
+    max_lat = envelope[1]
+    min_long = envelope[2]
+    max_long = envelope[3]
+
+    curr_points = 0
+
+    for i in range(num_points):
+
+        while curr_points < num_points:
         
-        if(getNumYears(next_data['datetime']) > 0):
+            new_point = ogr.Geometry(ogr.wkbPoint)
+            new_point_lat = uniform(min_lat, max_lat)
+            new_point_long = uniform(min_long, max_long)
+        
+            new_point.AddPoint(new_point_lat, new_point_long)
+
+            if new_point.Within(poly):
             
-            # Get total number of clear observations in the dataset
-            num_clear_obs = len(next_data)
+                sref = dc.load(product='ls8_arcsi_sref_ingested', measurements=['red', 'green', 'blue', 'nir', 'swir1', 'swir2'], lat=(new_point_lat), lon=(new_point_long))
+                sref = mask_invalid_data(sref)
+
+                if(sref.notnull()):
+                
+                    data = pd.DataFrame()
+                    data['time'] = sref.time.data
+                    data['time'] = data['time'].apply(lambda x: x.toordinal())
+                
+                    for name, var in sref.data_vars.items():
+                        data[name] = np.reshape(var.data, -1)
+        
+                    data = data.dropna(axis=1, how='all')
+
+                    if(data.shape[1] == 7):
+
+                        # Get number of bands, which will be the number of columns - 2
+                        num_bands = len(data.columns) - 2
+
+                        # One figure for each band - makes the plots much simpler
+                        plt_list = []
     
-            if(num_clear_obs >= 12 and num_clear_obs < 18):
-            # Use simple model with initialization period of 6 obs
-               next_data = findChange(next_data, plt_list, num_bands, 6)
-            
-            elif(num_clear_obs >= 18 and num_clear_obs < 24):
-               # Use simple model with initialization period of 12 obs
-               next_data = findChange(next_data, plt_list, num_bands, 12)
+                        # Sort data by date
+                        data = data.sort_values(by=['time'])
+    
+                        # Get the number of years covered by the dataset
+                        num_years = getNumYears(data['time'])
+    
+                        # Screen for outliers
+                        #robust_outliers = RLMRemoveOutliers()
+                        #next_data = robust_outliers.clean_data(data, num_years)
+                        next_data = data
+                        # Update num_years now outliers have been removed
+                        num_years = getNumYears(next_data['time'])
+    
+                        fig = plt.figure()
 
-            elif(num_clear_obs >= 24 and num_clear_obs < 30):
-               # Use advanced model with initialization period of 18 obs
-               next_data = findChange(next_data, plt_list, num_bands, 18)
+                        # Set up basic plots with original data
+                        for i in range(num_bands):
+                            plt_list.append(fig.add_subplot(num_bands, 1, i+1))
+                            band_col = next_data.columns[i+1]
+                            plt_list[i].plot(data['time'], data.iloc[:,i+1], 'o', color='blue', label='Original data', markersize=2)
+                            plt_list[i].plot(next_data['time'], next_data.iloc[:,i+1], 'o', color='black', label='Data after RIRLS', markersize=3)
+                            plt_list[i].set_ylabel(band_col)
+                            myFmt = mdates.DateFormatter('%Y') # Format dates as year rather than ordinal dates
+                            plt_list[i].xaxis.set_major_formatter(myFmt)
+    
+                        # We need at least 12 clear observations (6 + 6 to detect change)
+                        while(len(next_data) >= 12):
+        
+                            if(getNumYears(next_data['time']) > 0):
             
-            elif(num_clear_obs >= 30):
-               # Use full model with initialisation period of 24 obs
-               next_data = findChange(next_data, plt_list, num_bands, 24)
+                                # Get total number of clear observations in the dataset
+                                num_clear_obs = len(next_data)
+    
+                                if(num_clear_obs >= 12 and num_clear_obs < 18):
+                                # Use simple model with initialization period of 6 obs
+                                    next_data = findChange(next_data, plt_list, num_bands, 6)
             
-        else:
-            break
+                                elif(num_clear_obs >= 18 and num_clear_obs < 24):
+                                    # Use simple model with initialization period of 12 obs
+                                    next_data = findChange(next_data, plt_list, num_bands, 12)
 
-    # Once there is no more data to process, plot the results
-    plt.legend(['Original data', 'Data after RIRLS', 'Change point'])
-    plt.tight_layout()
-    plt.show()
+                                elif(num_clear_obs >= 24 and num_clear_obs < 30):
+                                    # Use advanced model with initialization period of 18 obs
+                                    next_data = findChange(next_data, plt_list, num_bands, 18)
+            
+                                elif(num_clear_obs >= 30):
+                                    # Use full model with initialisation period of 24 obs
+                                    next_data = findChange(next_data, plt_list, num_bands, 24)
+            
+                            else:
+                                break
+
+                        # Once there is no more data to process, plot the results
+                        plt.legend(['Original data', 'Data after RIRLS', 'Change point'])
+                        plt.tight_layout()
+                        plt.show()
 
 
 if __name__ == "__main__":

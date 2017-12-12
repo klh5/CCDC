@@ -21,9 +21,9 @@ class RLMRemoveOutliers(object):
         self.pi_val_change = (2 * np.pi) / (num_years * self.T)
 
         # Get coefficients for the three models
-        self.band2_model = self.makeRLMModel(pixel_data[['datetime', 'band_2']])
-        self.band4_model = self.makeRLMModel(pixel_data[['datetime', 'band_4']])
-        self.band5_model = self.makeRLMModel(pixel_data[['datetime', 'band_5']])
+        self.band2_model = self.makeRLMModel(pixel_data[['time', 'green']])
+        self.band4_model = self.makeRLMModel(pixel_data[['time', 'nir']])
+        self.band5_model = self.makeRLMModel(pixel_data[['time', 'swir1']])
 
         outliers = self.removeBadPixels(pixel_data)
     
@@ -37,9 +37,9 @@ class RLMRemoveOutliers(object):
         
         """Builds the model and stores the coefficients"""
         
-        band_data.columns = ['datetime', 'reflectance']
+        band_data.columns = ['time', 'reflectance']
         
-        rlm_model = smf.rlm('reflectance ~ np.cos(self.pi_val * datetime) + np.sin(self.pi_val * datetime) + np.cos(self.pi_val_change * datetime) + np.sin(self.pi_val_change * datetime)', band_data, M=sm.robust.norms.TukeyBiweight(c=0.4685))
+        rlm_model = smf.rlm('reflectance ~ np.cos(self.pi_val * time) + np.sin(self.pi_val * time) + np.cos(self.pi_val_change * time) + np.sin(self.pi_val_change * time)', band_data, M=sm.robust.norms.TukeyBiweight(c=0.4685))
         rlm_result = rlm_model.fit(maxiter=5)
         
         return rlm_result
@@ -57,18 +57,18 @@ class RLMRemoveOutliers(object):
         for index, row in band_data.iterrows():
 
             # Get B2 delta
-            b2_delta = row['band_2'] - row['band_2_pred']
+            b2_delta = row['green'] - row['band_2_pred']
             
             if(b2_delta > 400):
                 outliers.append(index)
 
             else:
                 # Get B4 delta
-                b4_delta = row['band_4'] - row['band_4_pred']
+                b4_delta = row['nir'] - row['band_4_pred']
                 
                 if(b4_delta < -400):
                     # Get B5 delta
-                    b5_delta = row['band_5'] - row['band_5_pred']
+                    b5_delta = row['swir1'] - row['band_5_pred']
                     
                     if(b5_delta < -400):
                         outliers.append(index)

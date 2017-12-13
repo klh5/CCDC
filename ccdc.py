@@ -182,10 +182,12 @@ def main(args):
     dc = datacube.Datacube()
 
     # Set some spatial boundaries for the data
-    #lower_lat = -27.0
-    #upper_lat = -25.0
-    #left_long = 146.0
-    #right_long = 149.0
+    lower_lat = args.lowerlat #-27.0
+    upper_lat = args.upperlat #-25.0
+    left_long = args.lowerlon #146.0
+    right_long = args.upperlon #149.0
+
+    num_points = args.num_points
 
     boundary = ogr.Geometry(ogr.wkbLinearRing)
     boundary.AddPoint(lower_lat, left_long)
@@ -323,12 +325,12 @@ def main(args):
 if __name__ == "__main__":
    
     parser = argparse.ArgumentParser(description='Run CCDC algorithm using Data Cube.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-lowerlat', '--llat', type=float, help='The lower latitude boundary of the area to be processed.')
-    parser.add_argument('-upperlat', '--ulat', type=float, help='The upper latitude boundary of the area to be processed.')
-    parser.add_argument('-lowerlon', '--llon', type=float, help='The lower longitude boundary of the area to be processed.')
-    parser.add_argument('-upperlon', '--ulon', type=float, help='The upper longitude boundary of the area to be processed.')
-    parser.add_argument('-mode', '--m', choices=['whole','sub'], default='sub', help='Specifies whether the entire area should be processed, or a random subsample.')
-    parser.add_argument('-num_points', '--num', type=int, default=100, help='Specifies the number of subsamples to take if a random subsample is being processed.')
+    parser.add_argument('-llat', '--lowerlat', type=float, help='The lower latitude boundary of the area to be processed.')
+    parser.add_argument('-ulat', '--upperlat', type=float, help='The upper latitude boundary of the area to be processed.')
+    parser.add_argument('-llon', '--lowerlon', type=float, help='The lower longitude boundary of the area to be processed.')
+    parser.add_argument('-ulon', '--upperlon', type=float, help='The upper longitude boundary of the area to be processed.')
+    parser.add_argument('-m', '--mode', choices=['whole','sub'], default='sub', help='Specifies whether the entire area should be processed, or a random subsample.')
+    parser.add_argument('-num', '--num_points', type=int, default=100, help='Specifies the number of subsamples to take if a random subsample is being processed.')
     args = parser.parse_args()
     
     main(args)

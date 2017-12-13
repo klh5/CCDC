@@ -17,7 +17,7 @@ from random import uniform
 # Set up list of models
 model_list = [None for i in range(5)]     # List of models, one for each band
 
-def add_change_marker(plot_list, num_bands, change_point, obs_data):
+def add_change_marker(plot_list, num_bands, start_change, end_change, obs_data):
 
    """ Adds a vertical line to each plot every time change is detected """
    
@@ -25,7 +25,8 @@ def add_change_marker(plot_list, num_bands, change_point, obs_data):
        y_min = np.amin(obs_data.iloc[:,i+1])
        y_max = np.amax(obs_data.iloc[:,i+1])
 
-       plot_list[i].plot([change_point, change_point], [y_min, y_max], 'r', linewidth=1, label="Change point")
+       plot_list[i].plot([start_change, start_change], [y_min, y_max], 'r', linewidth=1, label="Start change")
+       plot_list[i].plot([end_change, end_change], [y_min, y_max], 'g', linewidth=1, label="End change")
 
 def setupModels(all_band_data, num_bands, init_obs):
     
@@ -122,7 +123,7 @@ def findChange(pixel_data, figures, num_bands, init_obs):
 
     # Detect change
     change_flag = 0
-    change_time = None
+    change_start_time = None
 
     while((next_obs+1) <= len(pixel_data)):
 
@@ -145,11 +146,11 @@ def findChange(pixel_data, figures, num_bands, init_obs):
         else:
             change_flag += 1 # Don't add the new pixel to the model
             if(change_flag == 1): # If this is the first observed possible change point
-                change_time = new_date
+                change_start_time = new_date
     
         if(change_flag == 6):
             print("Change detected!")
-            add_change_marker(figures, num_bands, change_time, pixel_data)
+            add_change_marker(figures, num_bands, change_start_time, new_date, pixel_data)
             return pixel_data.iloc[next_obs:,]
         
         # Need to get the next observation
@@ -181,30 +182,24 @@ def main(args):
 
     dc = datacube.Datacube()
 
-    # Set some spatial boundaries for the data
-    lower_lat = args.lowerlat #-27.0
-    upper_lat = args.upperlat #-25.0
-    left_long = args.lowerlon #146.0
-    right_long = args.upperlon #149.0
+    if(args.lowerlat and args.upperlat and args.lowerlon and args.upperlon):
 
-    num_points = args.num_points
+        # Set some spatial boundaries for the data 
+        boundary = ogr.Geometry(ogr.wkbLinearRing)
+        boundary.AddPoint(args.lowerlat, args.lowerlon) 
+        boundary.AddPoint(args.lowerlat, args.upperlon)
+        boundary.AddPoint(args.upperlat, args.upperlon)
+        boundary.AddPoint(args.upperlat, args.lowerlon)
+        boundary.AddPoint(args.lowerlat, args.lowerlon)
 
-    boundary = ogr.Geometry(ogr.wkbLinearRing)
-    boundary.AddPoint(lower_lat, left_long)
-    boundary.AddPoint(lower_lat, right_long)
-    boundary.AddPoint(upper_lat, right_long)
-    boundary.AddPoint(upper_lat, left_long)
-    boundary.AddPoint(lower_lat, left_long)
+        poly = ogr.Geometry(ogr.wkbPolygon)
+        poly.AddGeometry(boundary)
 
-    poly = ogr.Geometry(ogr.wkbPolygon)
-    poly.AddGeometry(boundary)
+        envelope = poly.GetEnvelope()
 
-    envelope = poly.GetEnvelope()
+        min_lat, max_lat, min_long, max_long = envelope[0], envelope[1], envelope[2], envelope[3]
 
-    min_lat = envelope[0]
-    max_lat = envelope[1]
-    min_long = envelope[2]
-    max_long = envelope[3]
+    num_points = args.num_points # Defaults to 100
 
     curr_points = 0
 
@@ -311,11 +306,11 @@ def main(args):
                                 print("Ran out of observations.")
 
                                 # Once there is no more data to process, plot the results
-                                plt.legend(['Original data', 'Data after RIRLS', 'Change point'])
+                                plt.legend(['Original data', 'Data after RIRLS', 'Start change', 'End change'])
                                 plt.tight_layout()
                                 plt_name = "/Users/Katie/CCDC/plots/" + str(new_point.GetX()) + "_" + str(new_point.GetY()) + ".png"
                                 plt.savefig(plt_name)
-                                plt.clf()
+                                plt.close(fig)
 
                         else:
                             print("SREF and TOA data not the same length. Check indexing/ingestion.")

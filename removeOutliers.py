@@ -21,25 +21,21 @@ class RLMRemoveOutliers(object):
         self.pi_val_change = (2 * np.pi) / (num_years * self.T)
 
         # Get coefficients for the three models
-        self.band2_model = self.makeRLMModel(pixel_data[['time', 'green']])
-        self.band4_model = self.makeRLMModel(pixel_data[['time', 'nir']])
-        self.band5_model = self.makeRLMModel(pixel_data[['time', 'swir1']])
+        self.band2_model = self.makeRLMModel(pixel_data[['datetime', 'green']])
+        self.band4_model = self.makeRLMModel(pixel_data[['datetime', 'nir']])
+        self.band5_model = self.makeRLMModel(pixel_data[['datetime', 'swir1']])
 
         outliers = self.removeBadPixels(pixel_data)
     
-        # Remove outliers from data
-        pixel_data = pixel_data.drop(outliers)
-        pixel_data = pixel_data.reset_index(drop=True)
-        
-        return pixel_data
+        return outliers
     
     def makeRLMModel(self, band_data):
         
         """Builds the model and stores the coefficients"""
         
-        band_data.columns = ['time', 'reflectance']
+        band_data.columns = ['datetime', 'reflectance']
         
-        rlm_model = smf.rlm('reflectance ~ np.cos(self.pi_val * time) + np.sin(self.pi_val * time) + np.cos(self.pi_val_change * time) + np.sin(self.pi_val_change * time)', band_data, M=sm.robust.norms.TukeyBiweight(c=0.4685))
+        rlm_model = smf.rlm('reflectance ~ np.cos(self.pi_val * datetime) + np.sin(self.pi_val * datetime) + np.cos(self.pi_val_change * datetime) + np.sin(self.pi_val_change * datetime)', band_data, M=sm.robust.norms.TukeyBiweight(c=0.4685))
         rlm_result = rlm_model.fit(maxiter=5)
         
         return rlm_result

@@ -22,13 +22,13 @@ class MakeCCDCModel(object):
         """Finds the coefficients by fitting an OLS model to the data"""
         
         if(model_num == 6 or model_num == 12):
-            lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * time) + np.sin(self.pi_val_simple * time) + time', self.band_data)
+            lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * datetime) + np.sin(self.pi_val_simple * datetime) + datetime', self.band_data)
         
         elif(model_num == 18):
-            lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * time) + np.sin(self.pi_val_simple * time) + np.cos(self.pi_val_advanced * time) + np.sin(self.pi_val_advanced * time) + time', self.band_data)
+            lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * datetime) + np.sin(self.pi_val_simple * datetime) + np.cos(self.pi_val_advanced * datetime) + np.sin(self.pi_val_advanced * datetime) + datetime', self.band_data)
         
         elif(model_num == 24):
-            lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * time) + np.sin(self.pi_val_simple * time) + np.cos(self.pi_val_advanced * time) + np.sin(self.pi_val_advanced * time) + np.cos(self.pi_val_full * time) + np.sin(self.pi_val_full * time) + time', self.band_data)
+            lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * datetime) + np.sin(self.pi_val_simple * datetime) + np.cos(self.pi_val_advanced * datetime) + np.sin(self.pi_val_advanced * datetime) + np.cos(self.pi_val_full * datetime) + np.sin(self.pi_val_full * datetime) + datetime', self.band_data)
         
         self.lasso_model = lasso_model.fit_regularized(method='elastic_net', alpha=0.01, L1_wt=1.0)
         self.band_data['predicted'] = self.lasso_model.predict()
@@ -41,7 +41,7 @@ class MakeCCDCModel(object):
     
         """Returns a predicted value for a give date based on the current model"""
     
-        return self.lasso_model.predict({'time': [date_to_predict]})
+        return self.lasso_model.predict({'datetime': [date_to_predict]})
         
     def get_coefficients(self):
         

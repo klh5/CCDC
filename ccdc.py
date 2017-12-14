@@ -348,8 +348,6 @@ def runOnArea(dc, sref_products, toa_products, args):
 
         for i in range(len(sref.x)):
             for j in range(len(sref.y)):
-                print(i)
-                print(j)
                 sref_ts = sref.isel(x=i, y=j)
                 toa_ts = toa.isel(x=i, y=j)
        

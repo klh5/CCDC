@@ -54,6 +54,23 @@ def getNumYears(date_list):
 
     return num_years
 
+def transformToDf(dataset_to_transform):
+
+    """Transforms xarray Dataset object into a Pandas dataframe"""
+
+    new_df = pd.DataFrame()
+        
+    new_df['datetime'] = dataset_to_transform.time.data
+    new_df['datetime'] = new_df['datetime'].apply(lambda x: x.toordinal())
+
+    for name, var in dataset_to_transform.data_vars.items():
+        new_df[name] = np.reshape(var.data, -1)
+            
+    # Points at the edge of the image could return empty arrays (all 0's) - this will remove any columns to which this applies
+    new_df = new_df.dropna(axis=1, how='all')
+
+    return new_df
+
 def init_model(pixel_data, num_bands, init_obs):
 
     """Finds a sequence of 6/12/18/24 consecutive clear observations without any change, to initialize the model"""
@@ -159,87 +176,117 @@ def findChange(pixel_data, figures, num_bands, init_obs):
     # No change detected, end of data reached
     return []
 
-def runCCDC(ts_data, plt_list, num_bands):
+def runCCDC(sref_data, toa_data, plt_name):
 
-    # We need at least 12 clear observations (6 + 6 to detect change)
-    while(len(ts_data) >= 12):
+    """The main function which runs the CCDC algorithm. Loops until there are not enough observations
+        left after a breakpoint to attempt to initialize a new model."""
+
+    # Drop any rows which have NaN values for one or more bands (we need data for all bands to be complete)
+    sref_data.dropna(axis=0, how='any', inplace=True)
+    toa_data.dropna(axis=0, how='any', inplace=True)
+
+    num_bands = 5
+
+    # One figure for each band - makes the plots much simpler
+    plt_list = []
+
+    # Sort data by date
+    sref_data.sort_values(by=['datetime'], inplace=True)
+    toa_data.sort_values(by=['datetime'], inplace=True)
+    
+    if(len(sref_data) == len(toa_data)):
+        # Get the number of years covered by the dataset
+        num_years = getNumYears(sref_data['datetime'])
         
-        if(getNumYears(ts_data['datetime']) > 0):
+        # The algorithm needs at least 1 year of data
+        if(getNumYears(sref_data['datetime']) > 0):
             
-            # Get total number of clear observations in the dataset
-            num_clear_obs = len(ts_data)
-    
-            if(num_clear_obs >= 12 and num_clear_obs < 18):
-                # Use simple model with initialization period of 6 obs
-                ts_data = findChange(ts_data, plt_list, num_bands, 6)
+            # Screen for outliers
+            robust_outliers = RLMRemoveOutliers()
+            outlier_list = robust_outliers.findOutliers(toa_data, num_years)
+
+            ts_data = sref_data.drop(outlier_list)
+            ts_data.reset_index(drop=True, inplace=True)
+
+            # Update num_years now outliers have been removed
+            num_years = getNumYears(ts_data['datetime'])
+
+            fig = plt.figure(figsize=(20, 10))
+
+            # Set up plots with original data and screened data
+            for i in range(num_bands):
+                plt_list.append(fig.add_subplot(num_bands, 1, i+1))
+                band_col = ts_data.columns[i+1]
+                plt_list[i].plot(sref_data['datetime'], sref_data.iloc[:,i+1], 'o', color='blue', label='Original data', markersize=2)
+                plt_list[i].plot(ts_data['datetime'], ts_data.iloc[:,i+1], 'o', color='black', label='Data after RIRLS', markersize=3)
+                plt_list[i].set_ylabel(band_col)
+                myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
+                plt_list[i].xaxis.set_major_formatter(myFmt)
+
+            # We need at least 12 clear observations (6 + 6 to detect change)
+            while(len(ts_data) >= 12):
+                if(getNumYears(ts_data['datetime']) > 0):
+                    # Get total number of clear observations in the dataset
+                    num_clear_obs = len(ts_data)
             
-            elif(num_clear_obs >= 18 and num_clear_obs < 24):
-                # Use simple model with initialization period of 12 obs
-                ts_data = findChange(ts_data, plt_list, num_bands, 12)
+                    if(num_clear_obs >= 12 and num_clear_obs < 18):
+                        # Use simple model with initialization period of 6 obs
+                        ts_data = findChange(ts_data, plt_list, num_bands, 6)
+                    
+                    elif(num_clear_obs >= 18 and num_clear_obs < 24):
+                        # Use simple model with initialization period of 12 obs
+                        ts_data = findChange(ts_data, plt_list, num_bands, 12)
 
-            elif(num_clear_obs >= 24 and num_clear_obs < 30):
-                # Use advanced model with initialization period of 18 obs
-                ts_data = findChange(ts_data, plt_list, num_bands, 18)
-            
-            elif(num_clear_obs >= 30):
-                # Use full model with initialisation period of 24 obs
-                ts_data = findChange(ts_data, plt_list, num_bands, 24)
-            
-        else:
-            print("Less than 1 year of observations remaining.")
-            return
+                    elif(num_clear_obs >= 24 and num_clear_obs < 30):
+                        # Use advanced model with initialization period of 18 obs
+                        ts_data = findChange(ts_data, plt_list, num_bands, 18)
+                    
+                    elif(num_clear_obs >= 30):
+                        # Use full model with initialisation period of 24 obs
+                        ts_data = findChange(ts_data, plt_list, num_bands, 24)
+                    
+                else:
+                    print("Less than 1 year of observations remaining.")
+                    break                               
 
-def transformToDf(dataset_to_transform):
+            print("Ran out of observations.")
 
-    """Transforms xarray Dataset object into a Pandas dataframe"""
+            # Once there is no more data to process, plot the results
+            plt.legend(['Original data', 'Data after RIRLS', 'Start change', 'End change'])
+            plt.tight_layout()
+            plt.savefig(plt_name)
+            plt.close(fig)
 
-    new_df = pd.DataFrame()
-        
-    new_df['datetime'] = dataset_to_transform.time.data
-    new_df['datetime'] = new_df['datetime'].apply(lambda x: x.toordinal())
+    else:
+        print('SREF and TOA data not the same length. Check indexing/ingestion.')
 
-    for name, var in dataset_to_transform.data_vars.items():
-        new_df[name] = np.reshape(var.data, -1)
-            
-    # Points at the edge of the image could return empty arrays (all 0's) - this will remove any columns to which this applies
-    new_df = new_df.dropna(axis=1, how='all')
+def runOnSubset(dc, sref_products, toa_products, args):
 
-    return new_df
+    """If the user chooses to run the algorithm on a random subsample of the data, this function is called.
+        This function creates a polygon shape from the lat/long points provided by the user. It then selects
+        random points from within this shape and runs the algorithm on those points."""
 
-def main(args):
-    
-    """Program runs from here"""
+    # Set some spatial boundaries for the data 
+    boundary = ogr.Geometry(ogr.wkbLinearRing)
+    boundary.AddPoint(args.lowerlat, args.lowerlon) 
+    boundary.AddPoint(args.lowerlat, args.upperlon)
+    boundary.AddPoint(args.upperlat, args.upperlon)
+    boundary.AddPoint(args.upperlat, args.lowerlon)
+    boundary.AddPoint(args.lowerlat, args.lowerlon)
 
-    sref_products = ['ls8_arcsi_sref_ingested', 'ls7_arcsi_sref_ingested']
-    toa_products = ['ls8_arcsi_toa_ingested', 'ls7_arcsi_toa_ingested']
-    
-    dc = datacube.Datacube()
+    poly = ogr.Geometry(ogr.wkbPolygon)
+    poly.AddGeometry(boundary)
 
-    if(args.lowerlat and args.upperlat and args.lowerlon and args.upperlon): # If whole, use directly in load()
+    envelope = poly.GetEnvelope()
 
-        # Set some spatial boundaries for the data 
-        boundary = ogr.Geometry(ogr.wkbLinearRing)
-        boundary.AddPoint(args.lowerlat, args.lowerlon) 
-        boundary.AddPoint(args.lowerlat, args.upperlon)
-        boundary.AddPoint(args.upperlat, args.upperlon)
-        boundary.AddPoint(args.upperlat, args.lowerlon)
-        boundary.AddPoint(args.lowerlat, args.lowerlon)
-
-        poly = ogr.Geometry(ogr.wkbPolygon)
-        poly.AddGeometry(boundary)
-
-        envelope = poly.GetEnvelope()
-
-        min_lat, max_lat, min_long, max_long = envelope[0], envelope[1], envelope[2], envelope[3]
+    min_lat, max_lat, min_long, max_long = envelope[0], envelope[1], envelope[2], envelope[3]
 
     num_points = args.num_points # Defaults to 100
 
     curr_points = 0
 
     for i in range(num_points):
-
         while(curr_points < num_points):
-        
             new_point = ogr.Geometry(ogr.wkbPoint)
             new_point_lat = uniform(min_lat, max_lat)
             new_point_long = uniform(min_long, max_long)
@@ -247,103 +294,110 @@ def main(args):
             new_point.AddPoint(new_point_lat, new_point_long)
 
             if(new_point.Within(poly)):
-
                 sref_ds = []
                 toa_ds = []
 
                 for product in sref_products:
                     dataset = dc.load(product=product, measurements=['red', 'green', 'nir', 'swir1', 'swir2'], lat=(new_point_lat), lon=(new_point_long))
-                    sref_ds.append(dataset)
+                    if(dataset.notnull()):
+                        sref_ds.append(dataset)
             
                 for product in toa_products:
-                    dataset = dc.load(product=product, measurements=['red', 'green', 'nir', 'swir1', 'swir2'], lat=(new_point_lat), lon=(new_point_long))
-                    toa_ds.append(dataset)
-
-                sref = xr.concat(sref_ds, dim='time') # Maybe concat after checks
-                toa = xr.concat(toa_ds, dim='time')
+                    dataset = dc.load(product=product, measurements=['green', 'nir', 'swir1'], lat=(new_point_lat), lon=(new_point_long))
+                    if(dataset.notnull()):
+                        toa_ds.append(dataset)
+                        
+                if(len(sref_ds) == len(sref_products) and len(toa_ds) == len(toa_products)):
+                    sref = xr.concat(sref_ds, dim='time')
+                    toa = xr.concat(toa_ds, dim='time')
                 
-                # Change nodata values (0's) to NaN
-                sref = mask_invalid_data(sref)
-                toa = mask_invalid_data(toa)
-
-                if(sref.notnull() and toa.notnull()):
+                    # Change nodata values (0's) to NaN
+                    sref = mask_invalid_data(sref)
+                    toa = mask_invalid_data(toa)
                 
                     sref_data = transformToDf(sref)
                     toa_data = transformToDf(toa)
 
-                    if(sref_data.shape[1] == 6 and sref_data.shape[1] == 6):
-                    
-                        # Drop any rows which have NaN values for one or more bands (we need data for all bands to be complete)
-                        sref_data = sref_data.dropna(axis=0, how='any')
-                        toa_data = toa_data.dropna(axis=0, how='any')
+                    if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
+                        plt_name = "/Users/Katie/CCDC/plots/" + str(new_point.GetX()) + "_" + str(new_point.GetY()) + ".png"
+                        runCCDC(sref_data, toa_data, plt_name)
+                        curr_points += 1
 
-                        num_bands = 5
+def runOnArea(dc, sref_products, toa_products, args):
 
-                        # One figure for each band - makes the plots much simpler
-                        plt_list = []
+    sref_ds = []
+    toa_ds = []
+
+    for product in sref_products:
+        dataset = dc.load(product=product, measurements=['red', 'green', 'nir', 'swir1', 'swir2'], lat=(args.lowerlat, args.upperlat), lon=(args.lowerlon, args.upperlon))
+        if(dataset.notnull()):
+            sref_ds.append(dataset)
+
+    for product in toa_products:
+        dataset = dc.load(product=product, measurements=['green', 'nir', 'swir1'], lat=(args.lowerlat, args.upperlat), lon=(args.lowerlon, args.upperlon))
+        if(dataset.notnull()):
+            toa_ds.append(dataset)
+
+    if(len(sref_ds) == len(sref_products) and len(toa_ds) == len(toa_products)):      
+        sref = xr.concat(sref_ds, dim='time')
+        toa = xr.concat(toa_ds, dim='time')
+
+        # Change nodata values (0's) to NaN
+        sref = mask_invalid_data(sref)
+        toa = mask_invalid_data(toa)
+
+        for i in range(len(sref.x)):
+            for j in range(len(sref.y)):
+                print(i)
+                print(j)
+                sref_ts = sref.isel(x=i, y=j)
+                toa_ts = toa.isel(x=i, y=j)
+       
+                sref_data = transformToDf(sref_ts)
+                toa_data = transformToDf(toa_ts)
     
-                        # Sort data by date
-                        sref_data = sref_data.sort_values(by=['datetime'])
-                        toa_data = toa_data.sort_values(by=['datetime'])
-                        
-                        if(len(sref_data) == len(toa_data)):
+                if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
+                    plt_name = "/Users/Katie/CCDC/plots/" + str(int(sref_ts.x)) + "_" + str(int(sref_ts.y)) + ".png"
+                    runCCDC(sref_data, toa_data, plt_name)
+
+def main(args):
     
-                            # Get the number of years covered by the dataset
-                            num_years = getNumYears(sref_data['datetime'])
-                            
-                            # The algorithm needs at least 1 year of data
-                            if(getNumYears(sref_data['datetime']) > 0):
+    """Program runs from here"""
+
+    sref_products = []
+    toa_products = []
+
+    if 'ls5' in args.platform:
+        sref_products.append('ls5_arcsi_sref_ingested')
+        toa_products.append('ls5_arcsi_toa_ingested')
+
+    if 'ls7' in args.platform:
+        sref_products.append('ls7_arcsi_sref_ingested')
+        toa_products.append('ls7_arcsi_toa_ingested')
+
+    if 'ls8' in args.platform:
+        sref_products.append('ls8_arcsi_sref_ingested')
+        toa_products.append('ls8_arcsi_toa_ingested')
     
-                                # Screen for outliers
-                                robust_outliers = RLMRemoveOutliers()
-                                outlier_list = robust_outliers.findOutliers(toa_data, num_years)
-   
-                                clean_sref_data = sref_data.drop(outlier_list)
-                                clean_sref_data = clean_sref_data.reset_index(drop=True)
+    dc = datacube.Datacube()
 
-                                # Update num_years now outliers have been removed
-                                num_years = getNumYears(clean_sref_data['datetime'])
-    
-                                fig = plt.figure(figsize=(20, 10))
-                        
-                                curr_points += 1
+    if(args.mode == 'sub'):
+        runOnSubset(dc, sref_products, toa_products, args)
 
-                                # Set up basic plots with original data
-                                for i in range(num_bands):
-                                    plt_list.append(fig.add_subplot(num_bands, 1, i+1))
-                                    band_col = sref_data.columns[i+1]
-                                    plt_list[i].plot(sref_data['datetime'], sref_data.iloc[:,i+1], 'o', color='blue', label='Original data', markersize=2)
-                                    plt_list[i].plot(clean_sref_data['datetime'], clean_sref_data.iloc[:,i+1], 'o', color='black', label='Data after RIRLS', markersize=3)
-                                    plt_list[i].set_ylabel(band_col)
-                                    myFmt = mdates.DateFormatter('%m/%Y') # Format dates as year rather than ordinal dates
-                                    plt_list[i].xaxis.set_major_formatter(myFmt)
-    
-                                
-                                runCCDC(clean_sref_data, plt_list, num_bands)                                
-
-                                print("Ran out of observations.")
-
-                                # Once there is no more data to process, plot the results
-                                plt.legend(['Original data', 'Data after RIRLS', 'Start change', 'End change'])
-                                plt.tight_layout()
-                                plt_name = "/Users/Katie/CCDC/plots/" + str(new_point.GetX()) + "_" + str(new_point.GetY()) + ".png"
-                                plt.savefig(plt_name)
-                                plt.close(fig)
-
-                        else:
-                            print("SREF and TOA data not the same length. Check indexing/ingestion.")
-
+    else:
+        runOnArea(dc, sref_products, toa_products, args)
 
 
 if __name__ == "__main__":
    
-    parser = argparse.ArgumentParser(description='Run CCDC algorithm using Data Cube.', formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-llat', '--lowerlat', type=float, help='The lower latitude boundary of the area to be processed.')
-    parser.add_argument('-ulat', '--upperlat', type=float, help='The upper latitude boundary of the area to be processed.')
-    parser.add_argument('-llon', '--lowerlon', type=float, help='The lower longitude boundary of the area to be processed.')
-    parser.add_argument('-ulon', '--upperlon', type=float, help='The upper longitude boundary of the area to be processed.')
-    parser.add_argument('-m', '--mode', choices=['whole','sub'], default='sub', help='Specifies whether the entire area should be processed, or a random subsample.')
-    parser.add_argument('-num', '--num_points', type=int, default=100, help='Specifies the number of subsamples to take if a random subsample is being processed.')
+    parser = argparse.ArgumentParser(description="Run CCDC algorithm using Data Cube.", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('lowerlat', type=float, help="The lower latitude boundary of the area to be processed.")
+    parser.add_argument('upperlat', type=float, help="The upper latitude boundary of the area to be processed.")
+    parser.add_argument('lowerlon', type=float, help="The lower longitude boundary of the area to be processed.")
+    parser.add_argument('upperlon', type=float, help="The upper longitude boundary of the area to be processed.")
+    parser.add_argument('-p', '--platform', choices=['ls5', 'ls7', 'ls8'], nargs='+', default=['ls7', 'ls8'], help="The plaforms to be included.")
+    parser.add_argument('-m', '--mode', choices=['whole','sub'], default='sub', help="Specifies whether the entire area should be processed, or a random subsample. More computationally expensive, because the whole area will be loaded into memory at once.")
+    parser.add_argument('-num', '--num_points', type=int, default=100, help="Specifies the number of subsamples to take if a random subsample is being processed. Less computationally expensive, because only one point is loaded at a time.")
     args = parser.parse_args()
     
     main(args)

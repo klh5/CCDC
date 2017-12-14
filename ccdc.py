@@ -159,7 +159,37 @@ def findChange(pixel_data, figures, num_bands, init_obs):
     # No change detected, end of data reached
     return []
 
-def transform_to_df(dataset_to_transform):
+def runCCDC(ts_data, plt_list, num_bands):
+
+    # We need at least 12 clear observations (6 + 6 to detect change)
+    while(len(ts_data) >= 12):
+        
+        if(getNumYears(ts_data['datetime']) > 0):
+            
+            # Get total number of clear observations in the dataset
+            num_clear_obs = len(ts_data)
+    
+            if(num_clear_obs >= 12 and num_clear_obs < 18):
+                # Use simple model with initialization period of 6 obs
+                ts_data = findChange(ts_data, plt_list, num_bands, 6)
+            
+            elif(num_clear_obs >= 18 and num_clear_obs < 24):
+                # Use simple model with initialization period of 12 obs
+                ts_data = findChange(ts_data, plt_list, num_bands, 12)
+
+            elif(num_clear_obs >= 24 and num_clear_obs < 30):
+                # Use advanced model with initialization period of 18 obs
+                ts_data = findChange(ts_data, plt_list, num_bands, 18)
+            
+            elif(num_clear_obs >= 30):
+                # Use full model with initialisation period of 24 obs
+                ts_data = findChange(ts_data, plt_list, num_bands, 24)
+            
+        else:
+            print("Less than 1 year of observations remaining.")
+            return
+
+def transformToDf(dataset_to_transform):
 
     """Transforms xarray Dataset object into a Pandas dataframe"""
 
@@ -180,9 +210,12 @@ def main(args):
     
     """Program runs from here"""
 
+    sref_products = ['ls8_arcsi_sref_ingested', 'ls7_arcsi_sref_ingested']
+    toa_products = ['ls8_arcsi_toa_ingested', 'ls7_arcsi_toa_ingested']
+    
     dc = datacube.Datacube()
 
-    if(args.lowerlat and args.upperlat and args.lowerlon and args.upperlon):
+    if(args.lowerlat and args.upperlat and args.lowerlon and args.upperlon): # If whole, use directly in load()
 
         # Set some spatial boundaries for the data 
         boundary = ogr.Geometry(ogr.wkbLinearRing)
@@ -205,7 +238,7 @@ def main(args):
 
     for i in range(num_points):
 
-        while curr_points < num_points:
+        while(curr_points < num_points):
         
             new_point = ogr.Geometry(ogr.wkbPoint)
             new_point_lat = uniform(min_lat, max_lat)
@@ -213,10 +246,21 @@ def main(args):
         
             new_point.AddPoint(new_point_lat, new_point_long)
 
-            if new_point.Within(poly):
+            if(new_point.Within(poly)):
+
+                sref_ds = []
+                toa_ds = []
+
+                for product in sref_products:
+                    dataset = dc.load(product=product, measurements=['red', 'green', 'nir', 'swir1', 'swir2'], lat=(new_point_lat), lon=(new_point_long))
+                    sref_ds.append(dataset)
             
-                sref = dc.load(product='ls8_arcsi_sref_ingested', measurements=['red', 'green', 'nir', 'swir1', 'swir2'], lat=(new_point_lat), lon=(new_point_long))
-                toa = dc.load(product='ls8_arcsi_toa_ingested', measurements=['red', 'green', 'nir', 'swir1', 'swir2'], lat=(new_point_lat), lon=(new_point_long))
+                for product in toa_products:
+                    dataset = dc.load(product=product, measurements=['red', 'green', 'nir', 'swir1', 'swir2'], lat=(new_point_lat), lon=(new_point_long))
+                    toa_ds.append(dataset)
+
+                sref = xr.concat(sref_ds, dim='time') # Maybe concat after checks
+                toa = xr.concat(toa_ds, dim='time')
                 
                 # Change nodata values (0's) to NaN
                 sref = mask_invalid_data(sref)
@@ -224,8 +268,8 @@ def main(args):
 
                 if(sref.notnull() and toa.notnull()):
                 
-                    sref_data = transform_to_df(sref)
-                    toa_data = transform_to_df(toa)
+                    sref_data = transformToDf(sref)
+                    toa_data = transformToDf(toa)
 
                     if(sref_data.shape[1] == 6 and sref_data.shape[1] == 6):
                     
@@ -252,13 +296,13 @@ def main(args):
     
                                 # Screen for outliers
                                 robust_outliers = RLMRemoveOutliers()
-                                outlier_list = robust_outliers.clean_data(toa_data, num_years)
-                        
-                                next_data = sref_data.drop(outlier_list)
-                                next_data = next_data.reset_index(drop=True)
+                                outlier_list = robust_outliers.findOutliers(toa_data, num_years)
+   
+                                clean_sref_data = sref_data.drop(outlier_list)
+                                clean_sref_data = clean_sref_data.reset_index(drop=True)
 
                                 # Update num_years now outliers have been removed
-                                num_years = getNumYears(next_data['datetime'])
+                                num_years = getNumYears(clean_sref_data['datetime'])
     
                                 fig = plt.figure(figsize=(20, 10))
                         
@@ -267,42 +311,16 @@ def main(args):
                                 # Set up basic plots with original data
                                 for i in range(num_bands):
                                     plt_list.append(fig.add_subplot(num_bands, 1, i+1))
-                                    band_col = next_data.columns[i+1]
+                                    band_col = sref_data.columns[i+1]
                                     plt_list[i].plot(sref_data['datetime'], sref_data.iloc[:,i+1], 'o', color='blue', label='Original data', markersize=2)
-                                    plt_list[i].plot(next_data['datetime'], next_data.iloc[:,i+1], 'o', color='black', label='Data after RIRLS', markersize=3)
+                                    plt_list[i].plot(clean_sref_data['datetime'], clean_sref_data.iloc[:,i+1], 'o', color='black', label='Data after RIRLS', markersize=3)
                                     plt_list[i].set_ylabel(band_col)
                                     myFmt = mdates.DateFormatter('%m/%Y') # Format dates as year rather than ordinal dates
                                     plt_list[i].xaxis.set_major_formatter(myFmt)
     
-                                # We need at least 12 clear observations (6 + 6 to detect change)
-                                while(len(next_data) >= 12):
-        
-                                    if(getNumYears(next_data['datetime']) > 0):
-            
-                                        # Get total number of clear observations in the dataset
-                                        num_clear_obs = len(next_data)
-    
-                                        if(num_clear_obs >= 12 and num_clear_obs < 18):
-                                            # Use simple model with initialization period of 6 obs
-                                            next_data = findChange(next_data, plt_list, num_bands, 6)
-            
-                                        elif(num_clear_obs >= 18 and num_clear_obs < 24):
-                                            # Use simple model with initialization period of 12 obs
-                                            next_data = findChange(next_data, plt_list, num_bands, 12)
-
-                                        elif(num_clear_obs >= 24 and num_clear_obs < 30):
-                                            # Use advanced model with initialization period of 18 obs
-                                            next_data = findChange(next_data, plt_list, num_bands, 18)
-            
-                                        elif(num_clear_obs >= 30):
-                                            # Use full model with initialisation period of 24 obs
-                                            next_data = findChange(next_data, plt_list, num_bands, 24)
-            
-                                    else:
-                                        print("Less than 1 year of observations remaining.")
-                                        break
                                 
-                            
+                                runCCDC(clean_sref_data, plt_list, num_bands)                                
+
                                 print("Ran out of observations.")
 
                                 # Once there is no more data to process, plot the results

@@ -91,7 +91,7 @@ def init_model(pixel_data, num_bands, init_obs):
         num_data_points = len(curr_obs_list)
         
         if(num_data_points < init_obs):
-            print("Could not find a period of no change for model initialization.")
+            #print("Could not find a period of no change for model initialization.")
             return None
     
         # Re-initialize the models
@@ -124,11 +124,11 @@ def init_model(pixel_data, num_bands, init_obs):
         else:
             model_init = True
             init_end = init_obs + num_iters + 1
-            print("Model initialized. Iterations needed: {}".format(num_iters))
+            #print("Model initialized. Iterations needed: {}".format(num_iters))
 
     return curr_obs_list, init_end
 
-def findChange(pixel_data, figures, num_bands, init_obs):
+def findChange(pixel_data, figures, num_bands, init_obs, args):
     
     """Continues to add data points to the model until either a new breakpoint is detected, or there
         are not enough observations remaining."""
@@ -155,7 +155,7 @@ def findChange(pixel_data, figures, num_bands, init_obs):
             change_eval += residual_val
         
         if(change_eval <= 1):
-            print("Adding new data point")
+            #print("Adding new data point")
             model_data.append(new_obs, ignore_index=True)
             setupModels(model_data, num_bands, init_obs)
             change_flag = 0 # Reset change flag because we have an inlier
@@ -166,8 +166,11 @@ def findChange(pixel_data, figures, num_bands, init_obs):
                 change_start_time = new_date
     
         if(change_flag == 6):
-            print("Change detected!")
-            add_change_marker(figures, num_bands, change_start_time, new_date, pixel_data)
+            #print("Change detected!")
+            
+            if(args.outtype == 'plot'):
+                add_change_marker(figures, num_bands, change_start_time, new_date, pixel_data)
+                
             return pixel_data.iloc[next_obs:,]
         
         # Need to get the next observation
@@ -211,17 +214,19 @@ def runCCDC(sref_data, toa_data, plt_name):
             # Update num_years now outliers have been removed
             num_years = getNumYears(ts_data['datetime'])
 
-            fig = plt.figure(figsize=(20, 10))
+            if(args.outtype == 'plot'):
 
-            # Set up plots with original data and screened data
-            for i in range(num_bands):
-                plt_list.append(fig.add_subplot(num_bands, 1, i+1))
-                band_col = ts_data.columns[i+1]
-                plt_list[i].plot(sref_data['datetime'], sref_data.iloc[:,i+1], 'o', color='blue', label='Original data', markersize=2)
-                plt_list[i].plot(ts_data['datetime'], ts_data.iloc[:,i+1], 'o', color='black', label='Data after RIRLS', markersize=3)
-                plt_list[i].set_ylabel(band_col)
-                myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
-                plt_list[i].xaxis.set_major_formatter(myFmt)
+                fig = plt.figure(figsize=(20, 10))
+
+                # Set up plots with original data and screened data
+                for i in range(num_bands):
+                    plt_list.append(fig.add_subplot(num_bands, 1, i+1))
+                    band_col = ts_data.columns[i+1]
+                    plt_list[i].plot(sref_data['datetime'], sref_data.iloc[:,i+1], 'o', color='blue', label='Original data', markersize=2)
+                    plt_list[i].plot(ts_data['datetime'], ts_data.iloc[:,i+1], 'o', color='black', label='Data after RIRLS', markersize=3)
+                    plt_list[i].set_ylabel(band_col)
+                    myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
+                    plt_list[i].xaxis.set_major_formatter(myFmt)
 
             # We need at least 12 clear observations (6 + 6 to detect change)
             while(len(ts_data) >= 12):
@@ -231,34 +236,36 @@ def runCCDC(sref_data, toa_data, plt_name):
             
                     if(num_clear_obs >= 12 and num_clear_obs < 18):
                         # Use simple model with initialization period of 6 obs
-                        ts_data = findChange(ts_data, plt_list, num_bands, 6)
+                        ts_data = findChange(ts_data, plt_list, num_bands, 6, args)
                     
                     elif(num_clear_obs >= 18 and num_clear_obs < 24):
                         # Use simple model with initialization period of 12 obs
-                        ts_data = findChange(ts_data, plt_list, num_bands, 12)
+                        ts_data = findChange(ts_data, plt_list, num_bands, 12, args)
 
                     elif(num_clear_obs >= 24 and num_clear_obs < 30):
                         # Use advanced model with initialization period of 18 obs
-                        ts_data = findChange(ts_data, plt_list, num_bands, 18)
+                        ts_data = findChange(ts_data, plt_list, num_bands, 18, args)
                     
                     elif(num_clear_obs >= 30):
                         # Use full model with initialisation period of 24 obs
-                        ts_data = findChange(ts_data, plt_list, num_bands, 24)
+                        ts_data = findChange(ts_data, plt_list, num_bands, 24, args)
                     
                 else:
-                    print("Less than 1 year of observations remaining.")
+                    #print("Less than 1 year of observations remaining.")
                     break                               
 
-            print("Ran out of observations.")
+            #print("Ran out of observations.")
 
-            # Once there is no more data to process, plot the results
-            plt.legend(['Original data', 'Data after RIRLS', 'Start change', 'End change'])
-            plt.tight_layout()
-            plt.savefig(plt_name)
-            plt.close(fig)
+            if(args.outtype == 'plot'):
 
-    else:
-        print('SREF and TOA data not the same length. Check indexing/ingestion.')
+                # Once there is no more data to process, plot the results
+                plt.legend(['Original data', 'Data after RIRLS', 'Start change', 'End change'])
+                plt.tight_layout()
+                plt.savefig(plt_name)
+                plt.close(fig)
+
+    #else:
+        #print('SREF and TOA data not the same length. Check indexing/ingestion.')
 
 def runOnSubset(dc, sref_products, toa_products, args):
 
@@ -389,13 +396,14 @@ def main(args):
 if __name__ == "__main__":
    
     parser = argparse.ArgumentParser(description="Run CCDC algorithm using Data Cube.", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('lowerlat', type=float, help="The lower latitude boundary of the area to be processed.")
-    parser.add_argument('upperlat', type=float, help="The upper latitude boundary of the area to be processed.")
-    parser.add_argument('lowerlon', type=float, help="The lower longitude boundary of the area to be processed.")
-    parser.add_argument('upperlon', type=float, help="The upper longitude boundary of the area to be processed.")
-    parser.add_argument('-p', '--platform', choices=['ls5', 'ls7', 'ls8'], nargs='+', default=['ls7', 'ls8'], help="The plaforms to be included.")
+    parser.add_argument('-llat', '--lowerlat', type=float, required=True, help="The lower latitude boundary of the area to be processed.")
+    parser.add_argument('-ulat', '--upperlat', type=float, required=True, help="The upper latitude boundary of the area to be processed.")
+    parser.add_argument('-llon', '--lowerlon', type=float, required=True, help="The lower longitude boundary of the area to be processed.")
+    parser.add_argument('-ulon', '--upperlon', type=float, required=True, help="The upper longitude boundary of the area to be processed.")
+    parser.add_argument('-p', '--platform', choices=['ls5', 'ls7', 'ls8'], nargs='+', default=['ls5', 'ls7', 'ls8'], help="The plaforms to be included.")
     parser.add_argument('-m', '--mode', choices=['whole','sub'], default='sub', help="Specifies whether the entire area should be processed, or a random subsample. More computationally expensive, because the whole area will be loaded into memory at once.")
     parser.add_argument('-num', '--num_points', type=int, default=100, help="Specifies the number of subsamples to take if a random subsample is being processed. Less computationally expensive, because only one point is loaded at a time.")
+    parser.add_argument('-ot', '--outtype', choices=['plot', 'csv'], default='csv', help="Specifies the format of the output data. Either a plot or a CSV file will be produced for each pixel.")
     args = parser.parse_args()
     
     main(args)

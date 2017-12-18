@@ -171,7 +171,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             #print("Change detected!")
             
             if(args.outtype == 'plot'):
-                add_change_marker(figures, num_bands, change_start_time, new_date, pixel_data)
+                add_change_marker(num_bands, change_start_time, new_date, pixel_data)
 
             else:
                with open(change_file, 'a') as output_file:

@@ -6,6 +6,7 @@ import sys
 import datacube
 import xarray as xr
 import argparse
+import csv
 from datacube.storage.masking import mask_invalid_data
 from makeModel import MakeCCDCModel
 from removeOutliers import RLMRemoveOutliers
@@ -16,8 +17,9 @@ from random import uniform
 
 # Set up list of models
 model_list = [None for i in range(5)]     # List of models, one for each band
+plt_list = []                             # List of plots, one for each band
 
-def add_change_marker(plot_list, num_bands, start_change, end_change, obs_data):
+def add_change_marker(num_bands, start_change, end_change, obs_data):
 
    """ Adds a vertical line to each plot every time change is detected """
    
@@ -25,8 +27,8 @@ def add_change_marker(plot_list, num_bands, start_change, end_change, obs_data):
        y_min = np.amin(obs_data.iloc[:,i+1])
        y_max = np.amax(obs_data.iloc[:,i+1])
 
-       plot_list[i].plot([start_change, start_change], [y_min, y_max], 'r', linewidth=1, label="Start change")
-       plot_list[i].plot([end_change, end_change], [y_min, y_max], 'g', linewidth=1, label="End change")
+       plt_list[i].plot([start_change, start_change], [y_min, y_max], 'r', linewidth=1, label="Start change")
+       plt_list[i].plot([end_change, end_change], [y_min, y_max], 'g', linewidth=1, label="End change")
 
 def setupModels(all_band_data, num_bands, init_obs):
     
@@ -128,7 +130,7 @@ def init_model(pixel_data, num_bands, init_obs):
 
     return curr_obs_list, init_end
 
-def findChange(pixel_data, figures, num_bands, init_obs, args):
+def findChange(pixel_data, change_file, num_bands, init_obs, args):
     
     """Continues to add data points to the model until either a new breakpoint is detected, or there
         are not enough observations remaining."""
@@ -170,6 +172,11 @@ def findChange(pixel_data, figures, num_bands, init_obs, args):
             
             if(args.outtype == 'plot'):
                 add_change_marker(figures, num_bands, change_start_time, new_date, pixel_data)
+
+            else:
+               with open(change_file, 'a') as output_file:
+                  writer = csv.writer(output_file)
+                  writer.writerow([datetime.fromordinal(int(change_start_time)).strftime('%d/%m/%Y'), datetime.fromordinal(int(new_date)).strftime('%d/%m/%Y')])
                 
             return pixel_data.iloc[next_obs:,]
         
@@ -179,7 +186,7 @@ def findChange(pixel_data, figures, num_bands, init_obs, args):
     # No change detected, end of data reached
     return []
 
-def runCCDC(sref_data, toa_data, plt_name):
+def runCCDC(sref_data, toa_data, change_file):
 
     """The main function which runs the CCDC algorithm. Loops until there are not enough observations
         left after a breakpoint to attempt to initialize a new model."""
@@ -189,9 +196,6 @@ def runCCDC(sref_data, toa_data, plt_name):
     toa_data.dropna(axis=0, how='any', inplace=True)
 
     num_bands = 5
-
-    # One figure for each band - makes the plots much simpler
-    plt_list = []
 
     # Sort data by date
     sref_data.sort_values(by=['datetime'], inplace=True)
@@ -228,6 +232,12 @@ def runCCDC(sref_data, toa_data, plt_name):
                     myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
                     plt_list[i].xaxis.set_major_formatter(myFmt)
 
+            else:
+                  change_file = change_file + ".csv"
+                  with open(change_file, 'w') as output_file:
+                     writer = csv.writer(output_file)
+                     writer.writerow(['start_change', 'end_change'])
+
             # We need at least 12 clear observations (6 + 6 to detect change)
             while(len(ts_data) >= 12):
                 if(getNumYears(ts_data['datetime']) > 0):
@@ -236,19 +246,19 @@ def runCCDC(sref_data, toa_data, plt_name):
             
                     if(num_clear_obs >= 12 and num_clear_obs < 18):
                         # Use simple model with initialization period of 6 obs
-                        ts_data = findChange(ts_data, plt_list, num_bands, 6, args)
+                        ts_data = findChange(ts_data, change_file, num_bands, 6, args)
                     
                     elif(num_clear_obs >= 18 and num_clear_obs < 24):
                         # Use simple model with initialization period of 12 obs
-                        ts_data = findChange(ts_data, plt_list, num_bands, 12, args)
+                        ts_data = findChange(ts_data, change_file, num_bands, 12, args)
 
                     elif(num_clear_obs >= 24 and num_clear_obs < 30):
                         # Use advanced model with initialization period of 18 obs
-                        ts_data = findChange(ts_data, plt_list, num_bands, 18, args)
+                        ts_data = findChange(ts_data, change_file, num_bands, 18, args)
                     
                     elif(num_clear_obs >= 30):
                         # Use full model with initialisation period of 24 obs
-                        ts_data = findChange(ts_data, plt_list, num_bands, 24, args)
+                        ts_data = findChange(ts_data, change_file, num_bands, 24, args)
                     
                 else:
                     #print("Less than 1 year of observations remaining.")
@@ -261,9 +271,10 @@ def runCCDC(sref_data, toa_data, plt_name):
                 # Once there is no more data to process, plot the results
                 plt.legend(['Original data', 'Data after RIRLS', 'Start change', 'End change'])
                 plt.tight_layout()
-                plt.savefig(plt_name)
+                change_file = change_file + ".png"
+                plt.savefig(change_file)
                 plt.close(fig)
-
+                  
     #else:
         #print('SREF and TOA data not the same length. Check indexing/ingestion.')
 
@@ -326,8 +337,8 @@ def runOnSubset(dc, sref_products, toa_products, args):
                     toa_data = transformToDf(toa)
 
                     if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
-                        plt_name = "/Users/Katie/CCDC/plots/" + str(new_point.GetX()) + "_" + str(new_point.GetY()) + ".png"
-                        runCCDC(sref_data, toa_data, plt_name)
+                        change_file = "/Users/Katie/CCDC/plots/" + str(new_point.GetX()) + "_" + str(new_point.GetY())
+                        runCCDC(sref_data, toa_data, change_file)
                         curr_points += 1
 
 def runOnArea(dc, sref_products, toa_products, args):
@@ -362,8 +373,8 @@ def runOnArea(dc, sref_products, toa_products, args):
                 toa_data = transformToDf(toa_ts)
     
                 if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
-                    plt_name = "/Users/Katie/CCDC/plots/" + str(int(sref_ts.x)) + "_" + str(int(sref_ts.y)) + ".png"
-                    runCCDC(sref_data, toa_data, plt_name)
+                    change_file = "/Users/Katie/CCDC/plots/" + str(int(sref_ts.x)) + "_" + str(int(sref_ts.y))
+                    runCCDC(sref_data, toa_data, change_file)
 
 def main(args):
     

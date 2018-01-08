@@ -34,7 +34,6 @@ class RLMRemoveOutliers(object):
         """Builds the model and stores the coefficients"""
         
         band_data.columns = ['datetime', 'reflectance']
-        print(band_data)
         
         rlm_model = smf.rlm('reflectance ~ np.cos(self.pi_val * datetime) + np.sin(self.pi_val * datetime) + np.cos(self.pi_val_change * datetime) + np.sin(self.pi_val_change * datetime)', band_data, M=sm.robust.norms.TukeyBiweight(c=0.4685))
         rlm_result = rlm_model.fit(maxiter=5)

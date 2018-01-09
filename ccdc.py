@@ -383,37 +383,46 @@ def main(args):
     sref_products = []
     toa_products = []
 
-    if 'ls5' in args.platform:
+    if('ls5' in args.platform):
         sref_products.append('ls5_arcsi_sref_ingested')
         toa_products.append('ls5_arcsi_toa_ingested')
 
-    if 'ls7' in args.platform:
+    if('ls7' in args.platform):
         sref_products.append('ls7_arcsi_sref_ingested')
         toa_products.append('ls7_arcsi_toa_ingested')
 
-    if 'ls8' in args.platform:
+    if('ls8' in args.platform):
         sref_products.append('ls8_arcsi_sref_ingested')
         toa_products.append('ls8_arcsi_toa_ingested')
     
     dc = datacube.Datacube()
 
-    if(args.mode == 'sub'):
-        runOnSubset(dc, sref_products, toa_products, args)
+    if(args.lowerlat and args.upperlat and args.lowerlon and args.upperlon):
+
+        if(args.mode == 'sub'):
+            runOnSubset(dc, sref_products, toa_products, args)
+
+        else:
+            runOnArea(dc, sref_products, toa_products, args)
 
     else:
-        runOnArea(dc, sref_products, toa_products, args)
+        if(args.mode == 'scene'):
+            print("scene")
+
+        else:
+            print("Whole or sub arguments specified but no boundaries were provided.")
 
 
 if __name__ == "__main__":
    
     parser = argparse.ArgumentParser(description="Run CCDC algorithm using Data Cube.", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-llat', '--lowerlat', type=float, required=True, help="The lower latitude boundary of the area to be processed.")
-    parser.add_argument('-ulat', '--upperlat', type=float, required=True, help="The upper latitude boundary of the area to be processed.")
-    parser.add_argument('-llon', '--lowerlon', type=float, required=True, help="The lower longitude boundary of the area to be processed.")
-    parser.add_argument('-ulon', '--upperlon', type=float, required=True, help="The upper longitude boundary of the area to be processed.")
+    parser.add_argument('-llat', '--lowerlat', type=float, help="The lower latitude boundary of the area to be processed. Required if using whole or sub arguments.")
+    parser.add_argument('-ulat', '--upperlat', type=float, help="The upper latitude boundary of the area to be processed. Required if using whole or sub arguments.")
+    parser.add_argument('-llon', '--lowerlon', type=float, help="The lower longitude boundary of the area to be processed. Required if using whole or sub arguments.")
+    parser.add_argument('-ulon', '--upperlon', type=float, help="The upper longitude boundary of the area to be processed. Required if using whole or sub arguments.")
     parser.add_argument('-p', '--platform', choices=['ls5', 'ls7', 'ls8'], nargs='+', default=['ls5', 'ls7', 'ls8'], help="The plaforms to be included.")
-    parser.add_argument('-m', '--mode', choices=['whole','sub'], default='sub', help="Specifies whether the entire area should be processed, or a random subsample. More computationally expensive, because the whole area will be loaded into memory at once.")
-    parser.add_argument('-num', '--num_points', type=int, default=100, help="Specifies the number of subsamples to take if a random subsample is being processed. Less computationally expensive, because only one point is loaded at a time.")
+    parser.add_argument('-m', '--mode', choices=['whole','sub', 'scene'], default='scene', help="Wether the algorithm should be run on a whole (specified) area, a subsample of a (specified) area, or the whole of a scene.")
+    parser.add_argument('-num', '--num_points', type=int, default=100, help="Specifies the number of subsamples to take if a random subsample is being processed.")
     parser.add_argument('-ot', '--outtype', choices=['plot', 'csv'], default='csv', help="Specifies the format of the output data. Either a plot or a CSV file will be produced for each pixel.")
     args = parser.parse_args()
     

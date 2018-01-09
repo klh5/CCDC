@@ -1,7 +1,5 @@
 import numpy as np
-from datetime import datetime
 import statsmodels.formula.api as smf
-import statsmodels.api as sm
 import pandas as pd
 
 class RLMRemoveOutliers(object):

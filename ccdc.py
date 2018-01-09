@@ -15,6 +15,7 @@ from removeOutliers import RLMRemoveOutliers
 from datetime import datetime
 from osgeo import ogr
 from random import uniform
+from multiprocessing import Pool
 
 
 # Set up list of models
@@ -319,11 +320,13 @@ def runOnSubset(dc, sref_products, toa_products, args):
 
                 for product in sref_products:
                     dataset = dc.load(product=product, measurements=['red', 'green', 'nir', 'swir1', 'swir2'], lat=(new_point_lat), lon=(new_point_long))
+
                     if(dataset.notnull()):
                         sref_ds.append(dataset)
             
                 for product in toa_products:
                     dataset = dc.load(product=product, measurements=['green', 'nir', 'swir1'], lat=(new_point_lat), lon=(new_point_long))
+
                     if(dataset.notnull()):
                         toa_ds.append(dataset)
                         
@@ -384,10 +387,15 @@ def runOnArea(dc, sref_products, toa_products, args):
                     change_file = "/Users/Katie/CCDC/plots/" + str(int(sref_ts.x)) + "_" + str(int(sref_ts.y))
                     runCCDC(sref_data, toa_data, change_file)
 
-def tile_by_key(sref_products, toa_products, key, x_min, x_max, y_min, y_max):
+def tile_by_key(sref_products, toa_products, key, block):
 
     """A key represent one cell/area. Each cell has a tile for each time point. The x and y values define the extent of
    the tile that should be loaded and processed."""
+
+    x_min = block[0]
+    x_max = block[1]
+    y_min = block[2]
+    y_max = block[3]
 
     sref_ds = []
     toa_ds = []
@@ -427,12 +435,17 @@ def tile_by_key(sref_products, toa_products, key, x_min, x_max, y_min, y_max):
 
                 sref = xr.concat(sref_ds, dim='time')
                 toa = xr.concat(toa_ds, dim='time')
+
+                # Change nodata values (0's) to NaN
+                sref = mask_invalid_data(sref)
+                toa = mask_invalid_data(toa)
                 
                 sref_data = transformToDf(sref)
                 toa_data = transformToDf(toa)
 
                 if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
                     change_file = "/Users/Katie/CCDC/plots/" + str(int(sref.x)) + "_" + str(int(sref.y))
+                    print("Running algorithm")
                     runCCDC(sref_data, toa_data, change_file)
 
 def runOnScene(dc, sref_products, toa_products, args):
@@ -446,7 +459,18 @@ def runOnScene(dc, sref_products, toa_products, args):
     # Transform to list
     keys = list(keys)
 
-    tile_by_key(sref_products, toa_products, keys[6], 0, 1, 0, 1) # For testing I am just selecting one pixel of one tile
+    num_keys = len(keys)
+
+    blocks = [[1000, 1001, 1000, 1001], [1001, 1002, 1000, 1001]]
+    
+    args_list = itertools.product([sref_products], [toa_products], keys, blocks)
+
+    #tile_by_key(sref_products, toa_products, keys[0], [1000, 1001, 1000, 1001]) # For testing I am just selecting one pixel of one tile
+
+    pool = Pool(18)
+    pool.starmap(tile_by_key, args_list)
+    pool.close()
+    pool.join()
     
 def main(args):
     

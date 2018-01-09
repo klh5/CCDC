@@ -7,7 +7,9 @@ import datacube
 import xarray as xr
 import argparse
 import csv
+import itertools
 from datacube.storage.masking import mask_invalid_data
+from datacube.api import GridWorkflow
 from makeModel import MakeCCDCModel
 from removeOutliers import RLMRemoveOutliers
 from datetime import datetime
@@ -343,16 +345,21 @@ def runOnSubset(dc, sref_products, toa_products, args):
 
 def runOnArea(dc, sref_products, toa_products, args):
 
+    """If the user chooses to run the algorithm on the whole of the specified area, this function is called.
+    This function will load the whole area specified by the user, and run the algorithm on each pixel one by one."""
+
     sref_ds = []
     toa_ds = []
 
     for product in sref_products:
         dataset = dc.load(product=product, measurements=['red', 'green', 'nir', 'swir1', 'swir2'], lat=(args.lowerlat, args.upperlat), lon=(args.lowerlon, args.upperlon))
+        
         if(dataset.notnull()):
             sref_ds.append(dataset)
 
     for product in toa_products:
         dataset = dc.load(product=product, measurements=['green', 'nir', 'swir1'], lat=(args.lowerlat, args.upperlat), lon=(args.lowerlon, args.upperlon))
+        
         if(dataset.notnull()):
             toa_ds.append(dataset)
 
@@ -366,6 +373,7 @@ def runOnArea(dc, sref_products, toa_products, args):
 
         for i in range(len(sref.x)):
             for j in range(len(sref.y)):
+                
                 sref_ts = sref.isel(x=i, y=j)
                 toa_ts = toa.isel(x=i, y=j)
        
@@ -376,6 +384,70 @@ def runOnArea(dc, sref_products, toa_products, args):
                     change_file = "/Users/Katie/CCDC/plots/" + str(int(sref_ts.x)) + "_" + str(int(sref_ts.y))
                     runCCDC(sref_data, toa_data, change_file)
 
+def tile_by_key(sref_products, toa_products, key, x_min, x_max, y_min, y_max):
+
+    """A key represent one cell/area. Each cell has a tile for each time point. The x and y values define the extent of
+   the tile that should be loaded and processed."""
+
+    sref_ds = []
+    toa_ds = []
+
+    # Create a new Datacube object. This is needed for parallelization
+    tile_dc = datacube.Datacube()
+    
+    for i in range(x_min, x_max):
+        for j in range(y_min, y_max):
+
+            for product in sref_products:
+
+                # Create the GridWorkflow object for this product
+                curr_gw = GridWorkflow(tile_dc.index, product=product)
+
+                # Get the list of tiles (one for each time point) for this product
+                tile_list = curr_gw.list_tiles(product=product, cell_index=key)
+
+                # Retrieve the specified pixel for each tile in the list
+                for tile_index, tile in tile_list.items():
+                    sref_ds.append(curr_gw.load(tile[0:1, i:i+1, j:j+1], measurements=['red', 'green', 'nir', 'swir1', 'swir2']))
+
+            for product in toa_products:
+
+                # Create the GridWorkflow object for this product
+                curr_gw = GridWorkflow(tile_dc.index, product=product)
+
+                # Get the list of tiles (one for each time point) for this product
+                tile_list = curr_gw.list_tiles(product=product, cell_index=key)
+
+                # Retrieve the specified pixel for each tile in the list
+                for tile_index, tile in tile_list.items():
+                    toa_ds.append(curr_gw.load(tile[0:1, i:i+1, j:j+1], measurements=['green', 'nir', 'swir1']))
+            
+            # Check that both datasets are the same length
+            if(len(sref_ds) == len(toa_ds)):
+
+                sref = xr.concat(sref_ds, dim='time')
+                toa = xr.concat(toa_ds, dim='time')
+                
+                sref_data = transformToDf(sref)
+                toa_data = transformToDf(toa)
+
+                if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
+                    change_file = "/Users/Katie/CCDC/plots/" + str(int(sref.x)) + "_" + str(int(sref.y))
+                    runCCDC(sref_data, toa_data, change_file)
+
+def runOnScene(dc, sref_products, toa_products, args):
+
+    # Create a gridworkflow object based on the most recent platform
+    gw_init = GridWorkflow(dc.index, product=sref_products[-1])
+
+    # Retrieve the list of cell keys
+    keys = gw_init.list_cells(product=sref_products[-1]).keys()
+
+    # Transform to list
+    keys = list(keys)
+
+    tile_by_key(sref_products, toa_products, keys[6], 0, 1, 0, 1) # For testing I am just selecting one pixel of one tile
+    
 def main(args):
     
     """Program runs from here"""
@@ -383,6 +455,7 @@ def main(args):
     sref_products = []
     toa_products = []
 
+    # Products are always added to both lists in the same order
     if('ls5' in args.platform):
         sref_products.append('ls5_arcsi_sref_ingested')
         toa_products.append('ls5_arcsi_toa_ingested')
@@ -407,7 +480,7 @@ def main(args):
 
     else:
         if(args.mode == 'scene'):
-            print("scene")
+            runOnScene(dc, sref_products, toa_products, args)
 
         else:
             print("Whole or sub arguments specified but no boundaries were provided.")
@@ -420,7 +493,7 @@ if __name__ == "__main__":
     parser.add_argument('-ulat', '--upperlat', type=float, help="The upper latitude boundary of the area to be processed. Required if using whole or sub arguments.")
     parser.add_argument('-llon', '--lowerlon', type=float, help="The lower longitude boundary of the area to be processed. Required if using whole or sub arguments.")
     parser.add_argument('-ulon', '--upperlon', type=float, help="The upper longitude boundary of the area to be processed. Required if using whole or sub arguments.")
-    parser.add_argument('-p', '--platform', choices=['ls5', 'ls7', 'ls8'], nargs='+', default=['ls5', 'ls7', 'ls8'], help="The plaforms to be included.")
+    parser.add_argument('-p', '--platform', choices=['ls5', 'ls7', 'ls8'], nargs='+', default=['ls5', 'ls7', 'ls8'], help="The platforms to be included.")
     parser.add_argument('-m', '--mode', choices=['whole','sub', 'scene'], default='scene', help="Wether the algorithm should be run on a whole (specified) area, a subsample of a (specified) area, or the whole of a scene.")
     parser.add_argument('-num', '--num_points', type=int, default=100, help="Specifies the number of subsamples to take if a random subsample is being processed.")
     parser.add_argument('-ot', '--outtype', choices=['plot', 'csv'], default='csv', help="Specifies the format of the output data. Either a plot or a CSV file will be produced for each pixel.")

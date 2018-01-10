@@ -283,7 +283,7 @@ def runCCDC(sref_data, toa_data, change_file):
     #else:
         #print('SREF and TOA data not the same length. Check indexing/ingestion.')
 
-def runOnSubset(dc, sref_products, toa_products, args):
+def runOnSubset(sref_products, toa_products, args):
 
     """If the user chooses to run the algorithm on a random subsample of the data, this function is called.
         This function creates a polygon shape from the lat/long points provided by the user. It then selects
@@ -317,8 +317,11 @@ def runOnSubset(dc, sref_products, toa_products, args):
             new_point.AddPoint(new_point_lat, new_point_long)
 
             if(new_point.Within(poly)):
+               
                 sref_ds = []
                 toa_ds = []
+
+                dc = datacube.Datacube()
 
                 for product in sref_products:
                     dataset = dc.load(product=product, measurements=['red', 'green', 'nir', 'swir1', 'swir2'], lat=(new_point_lat), lon=(new_point_long))
@@ -332,6 +335,8 @@ def runOnSubset(dc, sref_products, toa_products, args):
                     if(dataset.notnull()):
                         toa_ds.append(dataset)
                         
+                dc.close()
+                        
                 if(len(sref_ds) == len(sref_products) and len(toa_ds) == len(toa_products)):
                     sref = xr.concat(sref_ds, dim='time')
                     toa = xr.concat(toa_ds, dim='time')
@@ -344,17 +349,20 @@ def runOnSubset(dc, sref_products, toa_products, args):
                     toa_data = transformToDf(toa)
 
                     if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
+                        dc.close()
                         change_file = "/Users/Katie/CCDC/plots/" + str(new_point.GetX()) + "_" + str(new_point.GetY())
                         runCCDC(sref_data, toa_data, change_file)
                         curr_points += 1
 
-def runOnArea(dc, sref_products, toa_products, args):
+def runOnArea(sref_products, toa_products, args):
 
     """If the user chooses to run the algorithm on the whole of the specified area, this function is called.
     This function will load the whole area specified by the user, and run the algorithm on each pixel one by one."""
 
     sref_ds = []
     toa_ds = []
+
+    dc = datacube.Datacube()
 
     for product in sref_products:
         dataset = dc.load(product=product, measurements=['red', 'green', 'nir', 'swir1', 'swir2'], lat=(args.lowerlat, args.upperlat), lon=(args.lowerlon, args.upperlon))
@@ -367,7 +375,9 @@ def runOnArea(dc, sref_products, toa_products, args):
         
         if(dataset.notnull()):
             toa_ds.append(dataset)
-
+            
+    dc.close()
+    
     if(len(sref_ds) == len(sref_products) and len(toa_ds) == len(toa_products)):      
         sref = xr.concat(sref_ds, dim='time')
         toa = xr.concat(toa_ds, dim='time')
@@ -386,10 +396,11 @@ def runOnArea(dc, sref_products, toa_products, args):
                 toa_data = transformToDf(toa_ts)
     
                 if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
+                    dc.close()
                     change_file = "/Users/Katie/CCDC/plots/" + str(int(sref_ts.x)) + "_" + str(int(sref_ts.y))
                     runCCDC(sref_data, toa_data, change_file)
 
-def runOnPixel(dc, sref_products, toa_products, key, x_val, y_val):
+def runOnPixel(sref_products, toa_products, key, x_val, y_val):
 
     """A key represent one cell/area. Each cell has a tile for each time point. The x and y values define the extent of
    the tile that should be loaded and processed."""
@@ -399,11 +410,15 @@ def runOnPixel(dc, sref_products, toa_products, key, x_val, y_val):
 
     for product in sref_products:
 
+        dc = datacube.Datacube()
+
         # Create the GridWorkflow object for this product
         curr_gw = GridWorkflow(dc.index, product=product)
 
         # Get the list of tiles (one for each time point) for this product
         tile_list = curr_gw.list_tiles(product=product, cell_index=key)
+
+        dc.close()
 
         # Retrieve the specified pixel for each tile in the list
         for tile_index, tile in tile_list.items():
@@ -414,15 +429,19 @@ def runOnPixel(dc, sref_products, toa_products, key, x_val, y_val):
 
     for product in toa_products:
 
+        dc = datacube.Datacube()
+
         # Create the GridWorkflow object for this product
         curr_gw = GridWorkflow(dc.index, product=product)
 
         # Get the list of tiles (one for each time point) for this product
         tile_list = curr_gw.list_tiles(product=product, cell_index=key)
 
+        dc.close()
+
         # Retrieve the specified pixel for each tile in the list
         for tile_index, tile in tile_list.items():
-            dataset = curr_gw.load(tile[x_val:x_val+1, y_val:y_val+1], measurements=['green', 'nir', 'swir1'])
+            dataset = curr_gw.load(tile[0:1, x_val:x_val+1, y_val:y_val+1], measurements=['green', 'nir', 'swir1'])
 
             if(dataset.notnull()):
                 toa_ds.append(dataset)
@@ -441,8 +460,8 @@ def runOnPixel(dc, sref_products, toa_products, key, x_val, y_val):
         toa_data = transformToDf(toa)
 
         if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
+            dc.close()
             change_file = "/Users/Katie/CCDC/plots/" + str(int(sref.x)) + "_" + str(int(sref.y))
-            print("Running algorithm")
             runCCDC(sref_data, toa_data, change_file)
     
 def main(args):
@@ -464,17 +483,14 @@ def main(args):
     if('ls8' in args.platform):
         sref_products.append('ls8_arcsi_sref_ingested')
         toa_products.append('ls8_arcsi_toa_ingested')
-    
-    dc = datacube.Datacube()
-
 
     if(args.lowerlat > -1 and args.upperlat > -1 and args.lowerlon > -1 and args.upperlon > -1):
 
         if(args.mode == 'subsample'):
-            runOnSubset(dc, sref_products, toa_products, args)
+            runOnSubset(sref_products, toa_products, args)
 
         elif(args.mode == 'whole_area'):
-            runOnArea(dc, sref_products, toa_products, args)
+            runOnArea(sref_products, toa_products, args)
 
         else:
             print("Lat/long boundaries were provided, but mode was not subsample or whole_area.")
@@ -483,7 +499,7 @@ def main(args):
 
         if(args.mode == "by_pixel"):
             key = tuple(args.key)
-            runOnPixel(dc, sref_products, toa_products, key, args.pixel_x, args.pixel_y)
+            runOnPixel(sref_products, toa_products, key, args.pixel_x, args.pixel_y)
 
         else:
             print("Key/pixel details were provided, but mode was not by_pixel.")

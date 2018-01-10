@@ -203,8 +203,10 @@ def runCCDC(sref_data, toa_data, change_file):
     # Sort data by date
     sref_data.sort_values(by=['datetime'], inplace=True)
     toa_data.sort_values(by=['datetime'], inplace=True)
-    
+
+    # Very important that both datasets contain the same number of observations
     if(len(sref_data) == len(toa_data)):
+        
         # Get the number of years covered by the dataset
         num_years = getNumYears(sref_data['datetime'])
         
@@ -387,90 +389,61 @@ def runOnArea(dc, sref_products, toa_products, args):
                     change_file = "/Users/Katie/CCDC/plots/" + str(int(sref_ts.x)) + "_" + str(int(sref_ts.y))
                     runCCDC(sref_data, toa_data, change_file)
 
-def tile_by_key(sref_products, toa_products, key, block):
+def runOnPixel(dc, sref_products, toa_products, key, x_val, y_val):
 
     """A key represent one cell/area. Each cell has a tile for each time point. The x and y values define the extent of
    the tile that should be loaded and processed."""
 
-    x_min = block[0]
-    x_max = block[1]
-    y_min = block[2]
-    y_max = block[3]
-
     sref_ds = []
     toa_ds = []
 
-    # Create a new Datacube object. This is needed for parallelization
-    tile_dc = datacube.Datacube()
+    for product in sref_products:
+
+        # Create the GridWorkflow object for this product
+        curr_gw = GridWorkflow(dc.index, product=product)
+
+        # Get the list of tiles (one for each time point) for this product
+        tile_list = curr_gw.list_tiles(product=product, cell_index=key)
+
+        # Retrieve the specified pixel for each tile in the list
+        for tile_index, tile in tile_list.items():
+            dataset = curr_gw.load(tile[0:1, x_val:x_val+1, y_val:y_val+1], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
+
+            if(dataset.notnull()):
+                sref_ds.append(dataset)
+
+    for product in toa_products:
+
+        # Create the GridWorkflow object for this product
+        curr_gw = GridWorkflow(dc.index, product=product)
+
+        # Get the list of tiles (one for each time point) for this product
+        tile_list = curr_gw.list_tiles(product=product, cell_index=key)
+
+        # Retrieve the specified pixel for each tile in the list
+        for tile_index, tile in tile_list.items():
+            dataset = curr_gw.load(tile[x_val:x_val+1, y_val:y_val+1], measurements=['green', 'nir', 'swir1'])
+
+            if(dataset.notnull()):
+                toa_ds.append(dataset)
     
-    for i in range(x_min, x_max):
-        for j in range(y_min, y_max):
+    # Check that both datasets are the same length
+    if(len(sref_ds) == len(toa_ds) and len(sref_ds) > 0 and len(toa_ds) > 0):
 
-            for product in sref_products:
+        sref = xr.concat(sref_ds, dim='time')
+        toa = xr.concat(toa_ds, dim='time')
 
-                # Create the GridWorkflow object for this product
-                curr_gw = GridWorkflow(tile_dc.index, product=product)
+        # Change nodata values (0's) to NaN
+        sref = mask_invalid_data(sref)
+        toa = mask_invalid_data(toa)
+        
+        sref_data = transformToDf(sref)
+        toa_data = transformToDf(toa)
 
-                # Get the list of tiles (one for each time point) for this product
-                tile_list = curr_gw.list_tiles(product=product, cell_index=key)
-
-                # Retrieve the specified pixel for each tile in the list
-                for tile_index, tile in tile_list.items():
-                    sref_ds.append(curr_gw.load(tile[0:1, i:i+1, j:j+1], measurements=['red', 'green', 'nir', 'swir1', 'swir2']))
-
-            for product in toa_products:
-
-                # Create the GridWorkflow object for this product
-                curr_gw = GridWorkflow(tile_dc.index, product=product)
-
-                # Get the list of tiles (one for each time point) for this product
-                tile_list = curr_gw.list_tiles(product=product, cell_index=key)
-
-                # Retrieve the specified pixel for each tile in the list
-                for tile_index, tile in tile_list.items():
-                    toa_ds.append(curr_gw.load(tile[0:1, i:i+1, j:j+1], measurements=['green', 'nir', 'swir1']))
-            
-            # Check that both datasets are the same length
-            if(len(sref_ds) == len(toa_ds)):
-
-                sref = xr.concat(sref_ds, dim='time')
-                toa = xr.concat(toa_ds, dim='time')
-
-                # Change nodata values (0's) to NaN
-                sref = mask_invalid_data(sref)
-                toa = mask_invalid_data(toa)
-                
-                sref_data = transformToDf(sref)
-                toa_data = transformToDf(toa)
-
-                if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
-                    change_file = "/Users/Katie/CCDC/plots/" + str(int(sref.x)) + "_" + str(int(sref.y))
-                    print("Running algorithm")
-                    runCCDC(sref_data, toa_data, change_file)
-
-def runOnScene(dc, sref_products, toa_products, args):
-
-    # Create a gridworkflow object based on the most recent platform
-    gw_init = GridWorkflow(dc.index, product=sref_products[-1])
-
-    # Retrieve the list of cell keys
-    keys = gw_init.list_cells(product=sref_products[-1]).keys()
-
-    # Transform to list
-    keys = list(keys)
-
-    num_keys = len(keys)
-
-    blocks = [[1000, 1001, 1000, 1001], [1001, 1002, 1000, 1001]]
-    
-    args_list = itertools.product([sref_products], [toa_products], keys, blocks)
-
-    #tile_by_key(sref_products, toa_products, keys[0], [1000, 1001, 1000, 1001]) # For testing I am just selecting one pixel of one tile
-
-    pool = Pool(18)
-    pool.starmap(tile_by_key, args_list)
-    pool.close()
-    pool.join()
+        if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
+            change_file = "/Users/Katie/CCDC/plots/" + str(int(sref.x)) + "_" + str(int(sref.y))
+            print("Running algorithm")
+            runCCDC(sref_data, toa_data, change_file)
     
 def main(args):
     
@@ -494,31 +467,44 @@ def main(args):
     
     dc = datacube.Datacube()
 
-    if(args.lowerlat and args.upperlat and args.lowerlon and args.upperlon):
 
-        if(args.mode == 'sub'):
+    if(args.lowerlat > -1 and args.upperlat > -1 and args.lowerlon > -1 and args.upperlon > -1):
+
+        if(args.mode == 'subsample'):
             runOnSubset(dc, sref_products, toa_products, args)
 
-        else:
+        elif(args.mode == 'whole_area'):
             runOnArea(dc, sref_products, toa_products, args)
 
-    else:
-        if(args.mode == 'scene'):
-            runOnScene(dc, sref_products, toa_products, args)
+        else:
+            print("Lat/long boundaries were provided, but mode was not subsample or whole_area.")
+
+    elif(len(args.key) > 1 and args.pixel_x > -1 and args.pixel_y > -1):
+
+        if(args.mode == "by_pixel"):
+            key = tuple(args.key)
+            runOnPixel(dc, sref_products, toa_products, key, args.pixel_x, args.pixel_y)
 
         else:
-            print("Whole or sub arguments specified but no boundaries were provided.")
+            print("Key/pixel details were provided, but mode was not by_pixel.")
+
+    else:
+        print("Please provide either lat/long boundaries or pixel coordinates and cell key.")
+        
 
 
 if __name__ == "__main__":
    
     parser = argparse.ArgumentParser(description="Run CCDC algorithm using Data Cube.", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('-llat', '--lowerlat', type=float, help="The lower latitude boundary of the area to be processed. Required if using whole or sub arguments.")
-    parser.add_argument('-ulat', '--upperlat', type=float, help="The upper latitude boundary of the area to be processed. Required if using whole or sub arguments.")
-    parser.add_argument('-llon', '--lowerlon', type=float, help="The lower longitude boundary of the area to be processed. Required if using whole or sub arguments.")
-    parser.add_argument('-ulon', '--upperlon', type=float, help="The upper longitude boundary of the area to be processed. Required if using whole or sub arguments.")
+    parser.add_argument('-llat', '--lowerlat', type=float, default=-1, help="The lower latitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
+    parser.add_argument('-ulat', '--upperlat', type=float, default=-1, help="The upper latitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
+    parser.add_argument('-llon', '--lowerlon', type=float, default=-1, help="The lower longitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
+    parser.add_argument('-ulon', '--upperlon', type=float, default=-1, help="The upper longitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
+    parser.add_argument('-k', '--key', type=int, nargs='*', help="The key for the cell to be processed. Must be a tuple of two integers, e.g. 6, -27. Required if using by_pixel argument.")
+    parser.add_argument('-x', '--pixel_x', type=int, default=-1, help="The x value of the pixel to be processed within the specified tile. Required if using by_pixel argument.")
+    parser.add_argument('-y', '--pixel_y', type=int, default=-1, help="The y value of the pixel to be processed within the specified tile. Required if using by_pixel argument.")
     parser.add_argument('-p', '--platform', choices=['ls5', 'ls7', 'ls8'], nargs='+', default=['ls5', 'ls7', 'ls8'], help="The platforms to be included.")
-    parser.add_argument('-m', '--mode', choices=['whole','sub', 'scene'], default='scene', help="Wether the algorithm should be run on a whole (specified) area, a subsample of a (specified) area, or the whole of a scene.")
+    parser.add_argument('-m', '--mode', choices=['whole_area','subsample', 'by_pixel'], default='subsample', help="Whether the algorithm should be run on a whole (specified) area, a subsample of a (specified) area, or a specific pixel.")
     parser.add_argument('-num', '--num_points', type=int, default=100, help="Specifies the number of subsamples to take if a random subsample is being processed.")
     parser.add_argument('-ot', '--outtype', choices=['plot', 'csv'], default='csv', help="Specifies the format of the output data. Either a plot or a CSV file will be produced for each pixel.")
     args = parser.parse_args()

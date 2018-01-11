@@ -29,7 +29,7 @@ class MakeCCDCModel(object):
         elif(model_num == 24):
             lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * datetime) + np.sin(self.pi_val_simple * datetime) + np.cos(self.pi_val_advanced * datetime) + np.sin(self.pi_val_advanced * datetime) + np.cos(self.pi_val_full * datetime) + np.sin(self.pi_val_full * datetime) + datetime', self.band_data)
         
-        self.lasso_model = lasso_model.fit_regularized(method='elastic_net')
+        self.lasso_model = lasso_model.fit_regularized(method='elastic_net', alpha=1.0, L1_wt=1.0)
         self.band_data['predicted'] = self.lasso_model.predict()
     
         self.RMSE = np.sqrt(np.mean(((self.band_data['predicted'] - self.band_data['reflectance']) ** 2)))

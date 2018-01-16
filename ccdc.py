@@ -156,7 +156,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
         
         for model_num, band_model in enumerate(model_list):    # For each band
             new_ref_obs = new_obs[model_num+1]
-            residual_val = np.absolute((new_ref_obs - band_model.get_prediction(new_date)[0])) / (band_model.get_rmse() * 2)
+            residual_val = np.absolute((new_ref_obs - band_model.get_prediction(new_date)[0])) / (3 * band_model.get_rmse())
             change_eval += residual_val
         
         if(change_eval <= 1):
@@ -170,7 +170,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             if(change_flag == 1): # If this is the first observed possible change point
                 change_start_time = new_date
     
-        if(change_flag == 6):
+        if(change_flag == 3):
             #print("Change detected!")
             
             if(args.outtype == 'plot'):

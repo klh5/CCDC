@@ -7,7 +7,7 @@ import datacube
 import xarray as xr
 import argparse
 import csv
-import itertools
+from multiprocessing import Process
 from datacube.storage.masking import mask_invalid_data
 from datacube.api import GridWorkflow
 from makeModel import MakeCCDCModel
@@ -469,6 +469,10 @@ def runAll(sref_products, toa_products, args):
 
     """Run on all tiles in the specified datasets. Keys are based on the most recent dataset."""
 
+    num_cores = 4
+    
+    processes = []
+
     dc = datacube.Datacube()
 
     # Create Gridworkflow object for most recent dataset
@@ -493,7 +497,7 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile[0:1, 2000:2001, 2000:2001], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
+                dataset = gw.load(tile[0:1, 0:1000, 0:1000], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
 
                 if(dataset.notnull()):
                     sref_ds.append(dataset)
@@ -507,7 +511,7 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile[0:1, 2000:2001, 2000:2001], measurements=['green', 'nir', 'swir1'])
+                dataset = gw.load(tile[0:1, 0:1000, 0:1000], measurements=['green', 'nir', 'swir1'])
 
                 if(dataset.notnull()):
                     toa_ds.append(dataset)
@@ -524,6 +528,8 @@ def runAll(sref_products, toa_products, args):
             for i in range(len(sref.x)):
                 for j in range(len(sref.y)):
 
+                    print("{}, {}".format(i, j))
+
                     sref_ts = sref.isel(x=i, y=j)
                     toa_ts = toa.isel(x=i, y=j)
        
@@ -532,7 +538,26 @@ def runAll(sref_products, toa_products, args):
     
                     if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
                         change_file = "/Users/Katie/CCDC/plots/" + str(int(sref_ts.x)) + "_" + str(int(sref_ts.y))
-                        runCCDC(sref_data, toa_data, change_file, args)
+
+                        # Block until a core becomes available
+                        while(True):
+
+                            p_done = []
+
+                            for index, p in enumerate(processes):
+                                p.join(timeout=0)
+                                if(not p.is_alive()):
+                                    p_done.append(index)
+
+                            for index in p_done:
+                                del(processes[index])
+
+                            if(len(processes) < num_cores):
+                                break
+                                    
+                        process = Process(target=runCCDC, args=(sref_data, toa_data, change_file, args))
+                        processes.append(process)
+                        process.start()
     
 def main(args):
     

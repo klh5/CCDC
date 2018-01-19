@@ -15,8 +15,6 @@ from removeOutliers import RLMRemoveOutliers
 from datetime import datetime
 from osgeo import ogr
 from random import uniform
-from multiprocessing import Pool
-
 
 # Set up list of models
 model_list = [None for i in range(5)]     # List of models, one for each band
@@ -156,7 +154,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
         
         for model_num, band_model in enumerate(model_list):    # For each band
             new_ref_obs = new_obs[model_num+1]
-            residual_val = np.absolute((new_ref_obs - band_model.get_prediction(new_date)[0])) / (3 * band_model.get_rmse())
+            residual_val = np.absolute((new_ref_obs - band_model.get_prediction(new_date)[0])) / (2 * band_model.get_rmse())
             change_eval += residual_val
         
         if(change_eval <= 1):
@@ -170,7 +168,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             if(change_flag == 1): # If this is the first observed possible change point
                 change_start_time = new_date
     
-        if(change_flag == 3):
+        if(change_flag == 6):
             #print("Change detected!")
             
             if(args.outtype == 'plot'):
@@ -189,7 +187,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
     # No change detected, end of data reached
     return []
 
-def runCCDC(sref_data, toa_data, change_file):
+def runCCDC(sref_data, toa_data, change_file, args):
 
     """The main function which runs the CCDC algorithm. Loops until there are not enough observations
         left after a breakpoint to attempt to initialize a new model."""
@@ -351,7 +349,7 @@ def runOnSubset(sref_products, toa_products, args):
                     if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
                         dc.close()
                         change_file = "/Users/Katie/CCDC/plots/" + str(new_point.GetX()) + "_" + str(new_point.GetY())
-                        runCCDC(sref_data, toa_data, change_file)
+                        runCCDC(sref_data, toa_data, change_file, args)
                         curr_points += 1
 
 def runOnArea(sref_products, toa_products, args):
@@ -398,12 +396,15 @@ def runOnArea(sref_products, toa_products, args):
                 if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
                     dc.close()
                     change_file = "/Users/Katie/CCDC/plots/" + str(int(sref_ts.x)) + "_" + str(int(sref_ts.y))
-                    runCCDC(sref_data, toa_data, change_file)
+                    runCCDC(sref_data, toa_data, change_file, args)
 
-def runOnPixel(sref_products, toa_products, key, x_val, y_val):
+def runOnPixel(sref_products, toa_products, key, args):
 
     """A key represent one cell/area. Each cell has a tile for each time point. The x and y values define the extent of
    the tile that should be loaded and processed."""
+
+    x_val = args.pixel_x
+    y_val = args.pixel_y
 
     sref_ds = []
     toa_ds = []
@@ -462,7 +463,76 @@ def runOnPixel(sref_products, toa_products, key, x_val, y_val):
         if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
             dc.close()
             change_file = "/Users/Katie/CCDC/plots/" + str(int(sref.x)) + "_" + str(int(sref.y))
-            runCCDC(sref_data, toa_data, change_file)
+            runCCDC(sref_data, toa_data, change_file, args)
+
+def runAll(sref_products, toa_products, args):
+
+    """Run on all tiles in the specified datasets. Keys are based on the most recent dataset."""
+
+    dc = datacube.Datacube()
+
+    # Create Gridworkflow object for most recent dataset
+    gw = GridWorkflow(dc.index, product=sref_products[-1])
+
+    # Get list of cell keys for most recent dataset
+    keys = list(gw.list_cells(product=sref_products[-1]).keys())
+
+    keys = [(5, -28)]
+
+    for key in keys:
+
+        sref_ds = []
+        toa_ds = []
+
+        for product in sref_products:
+
+            gw = GridWorkflow(dc.index, product=product)
+
+            # Get the list of tiles (one for each time point) for this product
+            tile_list = gw.list_tiles(product=product, cell_index=key)
+
+            # Load all tiles
+            for tile_index, tile in tile_list.items():
+                dataset = gw.load(tile[0:1, 2000:2001, 2000:2001], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
+
+                if(dataset.notnull()):
+                    sref_ds.append(dataset)
+
+        for product in toa_products:
+
+            gw = GridWorkflow(dc.index, product=product)
+
+            # Get the list of tiles (one for each time point) for this product
+            tile_list = gw.list_tiles(product=product, cell_index=key)
+
+            # Load all tiles
+            for tile_index, tile in tile_list.items():
+                dataset = gw.load(tile[0:1, 2000:2001, 2000:2001], measurements=['green', 'nir', 'swir1'])
+
+                if(dataset.notnull()):
+                    toa_ds.append(dataset)
+
+        dc.close()
+
+        # Check that both datasets are the same length
+        if(len(sref_ds) == len(toa_ds) and len(sref_ds) > 0 and len(toa_ds) > 0):
+
+            sref = xr.concat(sref_ds, dim='time')
+            toa = xr.concat(toa_ds, dim='time')
+            
+            # We want to process each pixel seperately
+            for i in range(len(sref.x)):
+                for j in range(len(sref.y)):
+
+                    sref_ts = sref.isel(x=i, y=j)
+                    toa_ts = toa.isel(x=i, y=j)
+       
+                    sref_data = transformToDf(sref_ts)
+                    toa_data = transformToDf(toa_ts)
+    
+                    if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
+                        change_file = "/Users/Katie/CCDC/plots/" + str(int(sref_ts.x)) + "_" + str(int(sref_ts.y))
+                        runCCDC(sref_data, toa_data, change_file, args)
     
 def main(args):
     
@@ -499,13 +569,16 @@ def main(args):
 
         if(args.mode == "by_pixel"):
             key = tuple(args.key)
-            runOnPixel(sref_products, toa_products, key, args.pixel_x, args.pixel_y)
+            runOnPixel(sref_products, toa_products, key, args)
 
         else:
             print("Key/pixel details were provided, but mode was not by_pixel.")
 
+    elif(args.mode == 'all'):
+        runAll(sref_products, toa_products, args)
+
     else:
-        print("Please provide either lat/long boundaries or pixel coordinates and cell key.")
+        print("Please provide either lat/long boundaries or pixel coordinates and cell key, or set mode to 'all'.")
         
 
 
@@ -516,11 +589,11 @@ if __name__ == "__main__":
     parser.add_argument('-ulat', '--upperlat', type=float, default=-1, help="The upper latitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
     parser.add_argument('-llon', '--lowerlon', type=float, default=-1, help="The lower longitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
     parser.add_argument('-ulon', '--upperlon', type=float, default=-1, help="The upper longitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
-    parser.add_argument('-k', '--key', type=int, nargs='*', help="The key for the cell to be processed. Must be a tuple of two integers, e.g. 6, -27. Required if using by_pixel argument.")
+    parser.add_argument('-k', '--key', type=int, nargs='*', default=[], help="The key for the cell to be processed. Must be a tuple of two integers, e.g. 6, -27. Required if using by_pixel argument.")
     parser.add_argument('-x', '--pixel_x', type=int, default=-1, help="The x value of the pixel to be processed within the specified tile. Required if using by_pixel argument.")
     parser.add_argument('-y', '--pixel_y', type=int, default=-1, help="The y value of the pixel to be processed within the specified tile. Required if using by_pixel argument.")
     parser.add_argument('-p', '--platform', choices=['ls5', 'ls7', 'ls8'], nargs='+', default=['ls5', 'ls7', 'ls8'], help="The platforms to be included.")
-    parser.add_argument('-m', '--mode', choices=['whole_area','subsample', 'by_pixel'], default='subsample', help="Whether the algorithm should be run on a whole (specified) area, a subsample of a (specified) area, or a specific pixel.")
+    parser.add_argument('-m', '--mode', choices=['whole_area','subsample', 'by_pixel', 'all'], default='subsample', help="Whether the algorithm should be run on a whole (specified) area, a subsample of a (specified) area, a specific pixel, or all available data.")
     parser.add_argument('-num', '--num_points', type=int, default=100, help="Specifies the number of subsamples to take if a random subsample is being processed.")
     parser.add_argument('-ot', '--outtype', choices=['plot', 'csv'], default='csv', help="Specifies the format of the output data. Either a plot or a CSV file will be produced for each pixel.")
     args = parser.parse_args()

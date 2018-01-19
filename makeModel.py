@@ -12,35 +12,35 @@ class MakeCCDCModel(object):
         self.pi_val_full = (6 * np.pi) / self.T
         self.band_data = band_data
         
-        self.ols_model = None
+        self.lasso_model = None
         self.RMSE = None
         self.coefficients = None
 
     def fit_model(self, model_num):
         
-        """Finds the coefficients by fitting an OLS model to the data"""
+        """Finds the coefficients by fitting a Lasso model to the data"""
         
         if(model_num == 6 or model_num == 12):
-            ols_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * datetime) + np.sin(self.pi_val_simple * datetime) + datetime', self.band_data)
+            lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * datetime) + np.sin(self.pi_val_simple * datetime) + datetime', self.band_data)
         
         elif(model_num == 18):
-            ols_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * datetime) + np.sin(self.pi_val_simple * datetime) + np.cos(self.pi_val_advanced * datetime) + np.sin(self.pi_val_advanced * datetime) + datetime', self.band_data)
+            lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * datetime) + np.sin(self.pi_val_simple * datetime) + np.cos(self.pi_val_advanced * datetime) + np.sin(self.pi_val_advanced * datetime) + datetime', self.band_data)
         
         elif(model_num == 24):
-            ols_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * datetime) + np.sin(self.pi_val_simple * datetime) + np.cos(self.pi_val_advanced * datetime) + np.sin(self.pi_val_advanced * datetime) + np.cos(self.pi_val_full * datetime) + np.sin(self.pi_val_full * datetime) + datetime', self.band_data)
+            lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * datetime) + np.sin(self.pi_val_simple * datetime) + np.cos(self.pi_val_advanced * datetime) + np.sin(self.pi_val_advanced * datetime) + np.cos(self.pi_val_full * datetime) + np.sin(self.pi_val_full * datetime) + datetime', self.band_data)
         
-        self.ols_model = ols_model.fit()
-        self.band_data['predicted'] = self.ols_model.predict()
+        self.lasso_model = lasso_model.fit_regularized(alpha=10, maxiter=5, L1_wt = 1.0)
+        self.band_data['predicted'] = self.lasso_model.predict()
     
         self.RMSE = np.sqrt(np.mean(((self.band_data['predicted'] - self.band_data['reflectance']) ** 2)))
         
-        self.coefficients = self.ols_model.params
+        self.coefficients = self.lasso_model.params
         
     def get_prediction(self, date_to_predict):
     
         """Returns a predicted value for a give date based on the current model"""
     
-        return self.ols_model.predict({'datetime': [date_to_predict]})
+        return self.lasso_model.predict({'datetime': [date_to_predict]})
         
     def get_coefficients(self):
         

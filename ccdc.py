@@ -7,7 +7,7 @@ import datacube
 import xarray as xr
 import argparse
 import csv
-from multiprocessing import Process
+import multiprocessing
 from datacube.storage.masking import mask_invalid_data
 from datacube.api import GridWorkflow
 from makeModel import MakeCCDCModel
@@ -187,7 +187,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
     # No change detected, end of data reached
     return []
 
-def runCCDC(sref_data, toa_data, change_file, args):
+def runCCDC(sref_data, toa_data, change_file, x_val, y_val, return_list, args):
 
     """The main function which runs the CCDC algorithm. Loops until there are not enough observations
         left after a breakpoint to attempt to initialize a new model."""
@@ -197,6 +197,7 @@ def runCCDC(sref_data, toa_data, change_file, args):
     toa_data.dropna(axis=0, how='any', inplace=True)
 
     num_bands = 5
+    num_changes = 0
 
     # Sort data by date
     sref_data.sort_values(by=['datetime'], inplace=True)
@@ -244,10 +245,12 @@ def runCCDC(sref_data, toa_data, change_file, args):
             # We need at least 12 clear observations (6 + 6 to detect change)
             while(len(ts_data) >= 12):
                 if(getNumYears(ts_data['datetime']) > 0):
+
+                    
                     # Get total number of clear observations in the dataset
                     num_clear_obs = len(ts_data)
             
-                    if(num_clear_obs >= 12 and num_clear_obs < 18):
+                    if(num_clear_obs < 18):
                         # Use simple model with initialization period of 6 obs
                         ts_data = findChange(ts_data, change_file, num_bands, 6, args)
                     
@@ -262,6 +265,9 @@ def runCCDC(sref_data, toa_data, change_file, args):
                     elif(num_clear_obs >= 30):
                         # Use full model with initialisation period of 24 obs
                         ts_data = findChange(ts_data, change_file, num_bands, 24, args)
+
+                    if(len(ts_data) > 0):
+                        num_changes = num_changes + 1
                     
                 else:
                     #print("Less than 1 year of observations remaining.")
@@ -277,6 +283,8 @@ def runCCDC(sref_data, toa_data, change_file, args):
                 change_file = change_file + ".png"
                 plt.savefig(change_file)
                 plt.close(fig)
+
+            return_list.append({'x': x_val, 'y': y_val, 'num_changes': num_changes})
                   
     #else:
         #print('SREF and TOA data not the same length. Check indexing/ingestion.')
@@ -473,6 +481,9 @@ def runAll(sref_products, toa_products, args):
     
     processes = []
 
+    manager = multiprocessing.Manager()
+    return_list = manager.list()
+
     dc = datacube.Datacube()
 
     # Create Gridworkflow object for most recent dataset
@@ -497,7 +508,7 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile[0:1, 0:1000, 0:1000], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
+                dataset = gw.load(tile[0:1, 1000:1002, 1000:1010], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
 
                 if(dataset.notnull()):
                     sref_ds.append(dataset)
@@ -511,7 +522,7 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile[0:1, 0:1000, 0:1000], measurements=['green', 'nir', 'swir1'])
+                dataset = gw.load(tile[0:1, 1000:1002, 1000:1010], measurements=['green', 'nir', 'swir1'])
 
                 if(dataset.notnull()):
                     toa_ds.append(dataset)
@@ -537,7 +548,11 @@ def runAll(sref_products, toa_products, args):
                     toa_data = transformToDf(toa_ts)
     
                     if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
-                        change_file = "/Users/Katie/CCDC/plots/" + str(int(sref_ts.x)) + "_" + str(int(sref_ts.y))
+
+                        x_val = float(sref_ts.x)
+                        y_val = float(sref_ts.y)
+                                    
+                        change_file = "/Users/Katie/CCDC/output/" + str(x_val) + "_" + str(y_val)
 
                         # Block until a core becomes available
                         while(True):
@@ -555,9 +570,23 @@ def runAll(sref_products, toa_products, args):
                             if(len(processes) < num_cores):
                                 break
                                     
-                        process = Process(target=runCCDC, args=(sref_data, toa_data, change_file, args))
+                        process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, x_val, y_val, return_list, args))
                         processes.append(process)
                         process.start()
+
+    # Keep running until all processes have finished
+    for p in processes:
+        p.join()
+
+    rows = return_list[0:len(return_list)]
+
+    to_df = pd.DataFrame(rows).set_index(['x', 'y'])
+    
+    dataset = xr.Dataset.from_dataframe(to_df)
+
+    dataset.attrs['crs'] = 'PROJCS["WGS 84 / UTM zone 55N",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",147],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","32655"]]'
+
+    dataset.to_netcdf('yay.nc', encoding={'num_changes': {'dtype': 'uint16', '_FillValue': 9999}})
     
 def main(args):
     

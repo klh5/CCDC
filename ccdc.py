@@ -8,6 +8,7 @@ import xarray as xr
 import argparse
 import csv
 import multiprocessing
+import os
 from datacube.storage.masking import mask_invalid_data
 from datacube.api import GridWorkflow
 from makeModel import MakeCCDCModel
@@ -356,7 +357,7 @@ def runOnSubset(sref_products, toa_products, args):
 
                     if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
                         dc.close()
-                        change_file = "/Users/Katie/CCDC/plots/" + str(new_point.GetX()) + "_" + str(new_point.GetY())
+                        change_file = args.outdir + str(new_point.GetX()) + "_" + str(new_point.GetY())
                         runCCDC(sref_data, toa_data, change_file, args)
                         curr_points += 1
 
@@ -403,7 +404,7 @@ def runOnArea(sref_products, toa_products, args):
     
                 if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
                     dc.close()
-                    change_file = "/Users/Katie/CCDC/plots/" + str(int(sref_ts.x)) + "_" + str(int(sref_ts.y))
+                    change_file = args.outdir + str(int(sref_ts.x)) + "_" + str(int(sref_ts.y))
                     runCCDC(sref_data, toa_data, change_file, args)
 
 def runOnPixel(sref_products, toa_products, key, args):
@@ -470,7 +471,7 @@ def runOnPixel(sref_products, toa_products, key, args):
 
         if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
             dc.close()
-            change_file = "/Users/Katie/CCDC/plots/" + str(int(sref.x)) + "_" + str(int(sref.y))
+            change_file = args.outdir + str(int(sref.x)) + "_" + str(int(sref.y))
             runCCDC(sref_data, toa_data, change_file, args)
 
 def runAll(sref_products, toa_products, args):
@@ -552,7 +553,7 @@ def runAll(sref_products, toa_products, args):
                         x_val = float(sref_ts.x)
                         y_val = float(sref_ts.y)
                                     
-                        change_file = "/Users/Katie/CCDC/output/" + str(x_val) + "_" + str(y_val)
+                        change_file = args.outdir + str(x_val) + "_" + str(y_val)
 
                         # Block until a core becomes available
                         while(True):
@@ -594,6 +595,10 @@ def main(args):
 
     sref_products = []
     toa_products = []
+
+    if(not os.path.isdir(args.outdir)):
+       print("Output directory does not exist.")
+       sys.exit()
 
     # Products are always added to both lists in the same order
     if('ls5' in args.platform):
@@ -639,6 +644,7 @@ def main(args):
 if __name__ == "__main__":
    
     parser = argparse.ArgumentParser(description="Run CCDC algorithm using Data Cube.", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    parser.add_argument('-d', '--outdir', default="./", help="The output directory for any produced csv files/images/plots.")
     parser.add_argument('-llat', '--lowerlat', type=float, default=-1, help="The lower latitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
     parser.add_argument('-ulat', '--upperlat', type=float, default=-1, help="The upper latitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
     parser.add_argument('-llon', '--lowerlon', type=float, default=-1, help="The lower longitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")

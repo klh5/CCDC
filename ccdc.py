@@ -285,7 +285,7 @@ def runCCDC(sref_data, toa_data, change_file, x_val, y_val, return_list, args):
                 plt.savefig(change_file)
                 plt.close(fig)
 
-            #return_list.append({'x': x_val, 'y': y_val, 'num_changes': num_changes})
+            return_list.append({'x': x_val, 'y': y_val, 'num_changes': num_changes})
                   
     #else:
         #print('SREF and TOA data not the same length. Check indexing/ingestion.')
@@ -478,7 +478,7 @@ def runAll(sref_products, toa_products, args):
 
     """Run on all tiles in the specified datasets. Keys are based on the most recent dataset."""
 
-    num_cores = 4
+    num_cores = multiprocessing.cpu_count() - 1
     
     processes = []
 
@@ -510,7 +510,7 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile[0:1, 0:3500, 0:3500], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
+                dataset = gw.load(tile, measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
 
                 if(dataset.notnull()):
                     sref_ds.append(dataset)
@@ -524,7 +524,7 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile[0:1, 0:3500, 0:3500], measurements=['green', 'nir', 'swir1'])
+                dataset = gw.load(tile, measurements=['green', 'nir', 'swir1'])
 
                 if(dataset.notnull()):
                     toa_ds.append(dataset)

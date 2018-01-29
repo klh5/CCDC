@@ -1,7 +1,5 @@
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.dates as mdates
 import sys
 import datacube
 import xarray as xr
@@ -9,6 +7,8 @@ import argparse
 import csv
 import multiprocessing
 import os
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from datacube.storage.masking import mask_invalid_data
 from datacube.api import GridWorkflow
 from makeModel import MakeCCDCModel
@@ -285,7 +285,7 @@ def runCCDC(sref_data, toa_data, change_file, x_val, y_val, return_list, args):
                 plt.savefig(change_file)
                 plt.close(fig)
 
-            return_list.append({'x': x_val, 'y': y_val, 'num_changes': num_changes})
+            #return_list.append({'x': x_val, 'y': y_val, 'num_changes': num_changes})
                   
     #else:
         #print('SREF and TOA data not the same length. Check indexing/ingestion.')
@@ -482,6 +482,7 @@ def runAll(sref_products, toa_products, args):
     
     processes = []
 
+    # Set up list to enable all processes to send their results back
     manager = multiprocessing.Manager()
     return_list = manager.list()
 
@@ -509,7 +510,7 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile[0:1, 1000:1002, 1000:1010], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
+                dataset = gw.load(tile[0:1, 0:3500, 0:3500], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
 
                 if(dataset.notnull()):
                     sref_ds.append(dataset)
@@ -523,7 +524,7 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile[0:1, 1000:1002, 1000:1010], measurements=['green', 'nir', 'swir1'])
+                dataset = gw.load(tile[0:1, 0:3500, 0:3500], measurements=['green', 'nir', 'swir1'])
 
                 if(dataset.notnull()):
                     toa_ds.append(dataset)
@@ -535,6 +536,10 @@ def runAll(sref_products, toa_products, args):
 
             sref = xr.concat(sref_ds, dim='time')
             toa = xr.concat(toa_ds, dim='time')
+
+            # Change nodata values (0's) to NaN
+            sref = mask_invalid_data(sref)
+            toa = mask_invalid_data(toa)
             
             # We want to process each pixel seperately
             for i in range(len(sref.x)):
@@ -562,11 +567,13 @@ def runAll(sref_products, toa_products, args):
 
                             for index, p in enumerate(processes):
                                 p.join(timeout=0)
+                                
                                 if(not p.is_alive()):
                                     p_done.append(index)
 
-                            for index in p_done:
-                                del(processes[index])
+                            if(p_done):
+                                for index in sorted(p_done, reverse=True): # Need to delete in reverse order to preserve indexes
+                                    del(processes[index])
 
                             if(len(processes) < num_cores):
                                 break
@@ -579,6 +586,7 @@ def runAll(sref_products, toa_products, args):
     for p in processes:
         p.join()
 
+    # Pandas doesn't recognise Manager lists, so we need to convert it back to an ordinary list
     rows = return_list[0:len(return_list)]
 
     to_df = pd.DataFrame(rows).set_index(['x', 'y'])
@@ -587,7 +595,8 @@ def runAll(sref_products, toa_products, args):
 
     dataset.attrs['crs'] = 'PROJCS["WGS 84 / UTM zone 55N",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",147],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","32655"]]'
 
-    dataset.to_netcdf('yay.nc', encoding={'num_changes': {'dtype': 'uint16', '_FillValue': 9999}})
+    change_img = args.outdir + "change_map.nc"
+    dataset.to_netcdf(change_img, encoding={'num_changes': {'dtype': 'uint16', '_FillValue': 9999}})
     
 def main(args):
     
@@ -599,7 +608,7 @@ def main(args):
     if(not os.path.isdir(args.outdir)):
        print("Output directory does not exist.")
        sys.exit()
-
+        
     # Products are always added to both lists in the same order
     if('ls5' in args.platform):
         sref_products.append('ls5_arcsi_sref_ingested')
@@ -615,10 +624,10 @@ def main(args):
 
     if(args.lowerlat > -1 and args.upperlat > -1 and args.lowerlon > -1 and args.upperlon > -1):
 
-        if(args.mode == 'subsample'):
+        if(args.mode == "subsample"):
             runOnSubset(sref_products, toa_products, args)
 
-        elif(args.mode == 'whole_area'):
+        elif(args.mode == "whole_area"):
             runOnArea(sref_products, toa_products, args)
 
         else:
@@ -633,7 +642,7 @@ def main(args):
         else:
             print("Key/pixel details were provided, but mode was not by_pixel.")
 
-    elif(args.mode == 'all'):
+    elif(args.mode == "all"):
         runAll(sref_products, toa_products, args)
 
     else:

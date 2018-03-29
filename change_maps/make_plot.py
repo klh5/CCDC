@@ -47,7 +47,7 @@ def main():
 
         print(dataset)
 
-        dataset.to_netcdf('ls8_ls7.nc', encoding={'num_changes': {'dtype': 'uint16', '_FillValue': 9999}})
+        dataset.to_netcdf('all.nc', encoding={'num_changes': {'dtype': 'uint16', '_FillValue': 9999}})
                      
                     
 if __name__ == "__main__":

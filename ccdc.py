@@ -510,7 +510,7 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile, measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
+                dataset = gw.load(tile[0:1, 0:100, 0:1000], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
 
                 if(dataset.notnull()):
                     sref_ds.append(dataset)
@@ -524,7 +524,7 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile, measurements=['green', 'nir', 'swir1'])
+                dataset = gw.load(tile[0:1, 0:100, 0:1000], measurements=['green', 'nir', 'swir1'])
 
                 if(dataset.notnull()):
                     toa_ds.append(dataset)
@@ -589,7 +589,7 @@ def runAll(sref_products, toa_products, args):
     # Pandas doesn't recognise Manager lists, so we need to convert it back to an ordinary list
     rows = return_list[0:len(return_list)]
 
-    to_df = pd.DataFrame(rows).set_index(['x', 'y'])
+    to_df = pd.DataFrame(rows).set_index(['y', 'x'])
     
     dataset = xr.Dataset.from_dataframe(to_df)
 

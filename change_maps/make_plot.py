@@ -6,53 +6,55 @@ import csv
 import xarray as xr
 import numpy as np
 import re
+from osgeo import gdal
 
 def main():
 
     
-    if(len(sys.argv) > 1):
-        file_path = sys.argv[1]
+	if(len(sys.argv) > 1):
+		file_path = sys.argv[1]
 
-        print(file_path)
+		print(file_path)
         
-        if(os.path.isdir(file_path)):
+		if(os.path.isdir(file_path)):
 
-            rows = []
+			rows = []
         
             # For every file in the directory
-            for change_file in os.listdir(file_path):
+			for change_file in os.listdir(file_path):
 
-                if fnmatch.fnmatch(change_file, '*.csv'): # Check if it's a CSV file
+				if fnmatch.fnmatch(change_file, '*.csv'): # Check if it's a CSV file
 
-                    sep_filename = change_file.replace('.', '_').split('_')
+					sep_filename = change_file.replace('.', '_').split('_')
 
-                    x_val = float(sep_filename[0])
-                    y_val = float(sep_filename[2])
+					x_val = float(sep_filename[0])
+					y_val = float(sep_filename[2])
 
-                    csv_file_path = os.path.join(file_path, change_file)
+					csv_file_path = os.path.join(file_path, change_file)
 
-                    with open(csv_file_path, "r") as data_file:
-                        file_reader = csv.reader(data_file)
+					with open(csv_file_path, "r") as data_file:
+						file_reader = csv.reader(data_file)
 
-                        num_changes = sum(1 for row in file_reader) - 1
+						num_changes = sum(1 for row in file_reader) - 1
+						num_changes = num_changes * 100 # Scale up
                             
-                        row = {'x': x_val, 'y': y_val, 'num_changes': num_changes}
-                        rows.append(row)
+						row = {'x': x_val, 'y': y_val, 'num_changes': num_changes}
+						rows.append(row)
 
-        to_df = pd.DataFrame(rows).set_index(['x', 'y'])
+		to_df = pd.DataFrame(rows).set_index(['y', 'x'])
     
-        dataset = xr.Dataset.from_dataframe(to_df)
+		dataset = xr.Dataset.from_dataframe(to_df)
 
-        dataset.attrs['crs'] = 'PROJCS["WGS 84 / UTM zone 55N",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",147],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","32655"]]'
+		dataset.to_netcdf('new_map.nc', encoding={'num_changes': {'dtype': 'uint16', '_FillValue': 9999}})
 
-        print(dataset)
-
-        dataset.to_netcdf('all.nc', encoding={'num_changes': {'dtype': 'uint16', '_FillValue': 9999}})
+		# Set CRS
+		change_map = gdal.Open('new_map.nc')
+		change_map = gdal.Translate('new_map.nc', change_map, outputSRS = 'wkt.txt')
                      
                     
 if __name__ == "__main__":
 
-    main()
+	main()
 
 
 

@@ -16,21 +16,39 @@ from removeOutliers import RLMRemoveOutliers
 from datetime import datetime
 from osgeo import ogr
 from random import uniform
+from scipy.interpolate import interp1d
 
 # Set up list of models
 model_list = [None for i in range(5)]     # List of models, one for each band
 plt_list = []                             # List of plots, one for each band
 
-def add_change_marker(num_bands, start_change, end_change, obs_data):
+def add_change_marker(num_bands, start_change, end_change, obs_data, plot_data):
 
     """ Adds a vertical line to each plot every time change is detected """
+    T = 365
+    pi_val_simple = (2 * np.pi) / T
+    pi_val_advanced = (4 * np.pi) / T
+    pi_val_full = (6 * np.pi) / T
    
     for i in range(num_bands):
         y_min = np.amin(obs_data.iloc[:,i+1])
         y_max = np.amax(obs_data.iloc[:,i+1])
-		
+
         plt_list[i].plot([start_change, start_change], [y_min, y_max], 'r', linewidth=1, label="Start change")
-        plt_list[i].plot([end_change, end_change], [y_min, y_max], 'g', linewidth=1, label="End change")
+        plt_list[i].plot([end_change, end_change], [y_min, y_max], 'y', linewidth=1, label="End change")
+
+        num_coeffs = model_list[i].get_num_coeffs()
+
+        if(num_coeffs == 4):
+            interp = interp1d(plot_data.datetime, model_list[i].get_coefficients()[0] + (model_list[i].get_coefficients()[1]*(np.cos(pi_val_simple * plot_data.datetime))) + (model_list[i].get_coefficients()[2]*(np.sin(pi_val_simple * plot_data.datetime))) + model_list[i].get_coefficients()[3]*plot_data.datetime, kind='linear')
+
+        elif(num_coeffs == 6):
+            interp = interp1d(plot_data.datetime, model_list[i].get_coefficients()[0] + (model_list[i].get_coefficients()[1]*(np.cos(pi_val_simple * plot_data.datetime))) + (model_list[i].get_coefficients()[2]*(np.sin(pi_val_simple * plot_data.datetime))) + (model_list[i].get_coefficients()[3]*(np.cos(pi_val_advanced * plot_data.datetime))) + (model_list[i].get_coefficients()[4]*(np.sin(pi_val_advanced * plot_data.datetime))) + model_list[i].get_coefficients()[5]*plot_data.datetime, kind='linear')
+
+        else:
+            interp = interp1d(plot_data.datetime, model_list[i].get_coefficients()[0] + (model_list[i].get_coefficients()[1]*(np.cos(pi_val_simple * plot_data.datetime))) + (model_list[i].get_coefficients()[2]*(np.sin(pi_val_simple * plot_data.datetime))) + (model_list[i].get_coefficients()[3]*(np.cos(pi_val_advanced * plot_data.datetime))) + (model_list[i].get_coefficients()[4]*(np.sin(pi_val_advanced * plot_data.datetime))) + (model_list[i].get_coefficients()[5]*(np.sin(pi_val_full * plot_data.datetime))) + (model_list[i].get_coefficients()[6]*(np.cos(pi_val_full * plot_data.datetime))) + model_list[i].get_coefficients()[7]*plot_data.datetime, kind='linear')
+
+        plt_list[i].plot(plot_data.datetime, interp(plot_data.datetime), 'b', linewidth=1, label="Lasso fit")
 
 def setupModels(all_band_data, num_bands, init_obs):
     
@@ -173,7 +191,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             #print("Change detected!")
             
             if(args.outtype == 'plot'):
-                add_change_marker(num_bands, change_start_time, new_date, pixel_data)
+                add_change_marker(num_bands, change_start_time, new_date, pixel_data, model_data)
 
             else:
                with open(change_file, 'a') as output_file:
@@ -231,8 +249,8 @@ def runCCDC(sref_data, toa_data, change_file, x_val, y_val, return_list, args):
                 for i in range(num_bands):
                     plt_list.append(fig.add_subplot(num_bands, 1, i+1))
                     band_col = ts_data.columns[i+1]
-                    plt_list[i].plot(sref_data['datetime'], sref_data.iloc[:,i+1], 'o', color='blue', label='Original data', markersize=2)
-                    plt_list[i].plot(ts_data['datetime'], ts_data.iloc[:,i+1], 'o', color='black', label='Data after RIRLS', markersize=3)
+                    plt_list[i].plot(sref_data['datetime'], sref_data.iloc[:,i+1], 'o', color='0.5', label='Original data', markersize=3)
+                    plt_list[i].plot(ts_data['datetime'], ts_data.iloc[:,i+1], 'o', color='k', label='Data after RIRLS', markersize=3)
                     plt_list[i].set_ylabel(band_col)
                     myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
                     plt_list[i].xaxis.set_major_formatter(myFmt)
@@ -279,9 +297,9 @@ def runCCDC(sref_data, toa_data, change_file, x_val, y_val, return_list, args):
             if(args.outtype == 'plot'):
 
                 # Once there is no more data to process, plot the results
-                plt.legend(['Original data', 'Data after RIRLS', 'Start change', 'End change'])
+                plt.legend(['Original data', 'Data after RIRLS', 'Start change', 'End change', 'Lasso fit'])
                 plt.tight_layout()
-                change_file = change_file + ".png"
+                change_file = change_file + ".svg"
                 plt.savefig(change_file)
                 plt.close(fig)
 
@@ -510,7 +528,7 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile[0:1, 0:100, 0:1000], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
+                dataset = gw.load(tile[0:1, 1500:1501, 0:1], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
 
                 if(dataset.notnull()):
                     sref_ds.append(dataset)
@@ -524,7 +542,7 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile[0:1, 0:100, 0:1000], measurements=['green', 'nir', 'swir1'])
+                dataset = gw.load(tile[0:1, 1500:1501, 0:1], measurements=['green', 'nir', 'swir1'])
 
                 if(dataset.notnull()):
                     toa_ds.append(dataset)

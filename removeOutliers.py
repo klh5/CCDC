@@ -1,7 +1,6 @@
 import numpy as np
 import statsmodels.formula.api as smf
 import statsmodels as sm
-import pandas as pd
 
 class RLMRemoveOutliers(object):
 

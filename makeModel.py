@@ -1,6 +1,5 @@
 import numpy as np
 import statsmodels.formula.api as smf
-import pandas as pd
 
 class MakeCCDCModel(object):
 

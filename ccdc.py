@@ -23,14 +23,14 @@ plt_list = []                             # List of plots, one for each band
 
 def add_change_marker(num_bands, start_change, end_change, obs_data):
 
-   """ Adds a vertical line to each plot every time change is detected """
+    """ Adds a vertical line to each plot every time change is detected """
    
-   for i in range(num_bands):
-       y_min = np.amin(obs_data.iloc[:,i+1])
-       y_max = np.amax(obs_data.iloc[:,i+1])
-
-       plt_list[i].plot([start_change, start_change], [y_min, y_max], 'r', linewidth=1, label="Start change")
-       plt_list[i].plot([end_change, end_change], [y_min, y_max], 'g', linewidth=1, label="End change")
+    for i in range(num_bands):
+        y_min = np.amin(obs_data.iloc[:,i+1])
+        y_max = np.amax(obs_data.iloc[:,i+1])
+		
+        plt_list[i].plot([start_change, start_change], [y_min, y_max], 'r', linewidth=1, label="Start change")
+        plt_list[i].plot([end_change, end_change], [y_min, y_max], 'g', linewidth=1, label="End change")
 
 def setupModels(all_band_data, num_bands, init_obs):
     

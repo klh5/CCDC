@@ -206,7 +206,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
     # No change detected, end of data reached
     return []
 
-def runCCDC(sref_data, toa_data, change_file, x_val, y_val, return_list, args):
+def runCCDC(sref_data, toa_data, change_file, args, return_list=1, x_val=None, y_val=None):
 
     """The main function which runs the CCDC algorithm. Loops until there are not enough observations
         left after a breakpoint to attempt to initialize a new model."""
@@ -302,8 +302,10 @@ def runCCDC(sref_data, toa_data, change_file, x_val, y_val, return_list, args):
                 change_file = change_file + ".pdf"
                 plt.savefig(change_file)
                 plt.close(fig)
+                
 
-            return_list.append({'x': x_val, 'y': y_val, 'num_changes': num_changes})
+            if not(return_list): # Return_list is 1 (true) if a list is not passed, false otherwise
+                return_list.append({'x': x_val, 'y': y_val, 'num_changes': num_changes})
                   
     #else:
         #print('SREF and TOA data not the same length. Check indexing/ingestion.')
@@ -312,7 +314,8 @@ def runOnSubset(sref_products, toa_products, args):
 
     """If the user chooses to run the algorithm on a random subsample of the data, this function is called.
         This function creates a polygon shape from the lat/long points provided by the user. It then selects
-        random points from within this shape and runs the algorithm on those points."""
+        random points from within this shape and runs the algorithm on those points. This is quite slow because 
+        each point has to be loaded seperately."""
 
     # Set some spatial boundaries for the data 
     boundary = ogr.Geometry(ogr.wkbLinearRing)
@@ -334,7 +337,9 @@ def runOnSubset(sref_products, toa_products, args):
     curr_points = 0
 
     for i in range(num_points):
+        
         while(curr_points < num_points):
+            
             new_point = ogr.Geometry(ogr.wkbPoint)
             new_point_lat = uniform(min_lat, max_lat)
             new_point_long = uniform(min_long, max_long)
@@ -351,18 +356,19 @@ def runOnSubset(sref_products, toa_products, args):
                 for product in sref_products:
                     dataset = dc.load(product=product, measurements=['red', 'green', 'nir', 'swir1', 'swir2'], lat=(new_point_lat), lon=(new_point_long))
 
-                    if(dataset.notnull()):
+                    if(dataset.variables):
                         sref_ds.append(dataset)
             
                 for product in toa_products:
                     dataset = dc.load(product=product, measurements=['green', 'nir', 'swir1'], lat=(new_point_lat), lon=(new_point_long))
 
-                    if(dataset.notnull()):
+                    if(dataset.variables):
                         toa_ds.append(dataset)
                         
                 dc.close()
                         
                 if(len(sref_ds) == len(sref_products) and len(toa_ds) == len(toa_products)):
+                    
                     sref = xr.concat(sref_ds, dim='time')
                     toa = xr.concat(toa_ds, dim='time')
                 
@@ -374,6 +380,7 @@ def runOnSubset(sref_products, toa_products, args):
                     toa_data = transformToDf(toa)
 
                     if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
+                        
                         dc.close()
                         change_file = args.outdir + str(new_point.GetX()) + "_" + str(new_point.GetY())
                         runCCDC(sref_data, toa_data, change_file, args)
@@ -386,24 +393,33 @@ def runOnArea(sref_products, toa_products, args):
 
     sref_ds = []
     toa_ds = []
+    
+    num_cores = multiprocessing.cpu_count() - 1 # Leave one core for other stuff
+    
+    processes = []
+
+    # Set up list to enable all processes to send their results back
+    manager = multiprocessing.Manager()
+    return_list = manager.list()    
 
     dc = datacube.Datacube()
 
     for product in sref_products:
         dataset = dc.load(product=product, measurements=['red', 'green', 'nir', 'swir1', 'swir2'], lat=(args.lowerlat, args.upperlat), lon=(args.lowerlon, args.upperlon))
         
-        if(dataset.notnull()):
+        if(dataset.variables):
             sref_ds.append(dataset)
 
     for product in toa_products:
         dataset = dc.load(product=product, measurements=['green', 'nir', 'swir1'], lat=(args.lowerlat, args.upperlat), lon=(args.lowerlon, args.upperlon))
         
-        if(dataset.notnull()):
+        if(dataset.variables):
             toa_ds.append(dataset)
             
     dc.close()
     
     if(len(sref_ds) == len(sref_products) and len(toa_ds) == len(toa_products)):      
+        
         sref = xr.concat(sref_ds, dim='time')
         toa = xr.concat(toa_ds, dim='time')
 
@@ -414,6 +430,8 @@ def runOnArea(sref_products, toa_products, args):
         for i in range(len(sref.x)):
             for j in range(len(sref.y)):
                 
+                print("{}, {}".format(i, j))
+                
                 sref_ts = sref.isel(x=i, y=j)
                 toa_ts = toa.isel(x=i, y=j)
        
@@ -421,9 +439,49 @@ def runOnArea(sref_products, toa_products, args):
                 toa_data = transformToDf(toa_ts)
     
                 if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
-                    dc.close()
+                    
+                    x_val = float(sref_ts.x)
+                    y_val = float(sref_ts.x)
+                        
                     change_file = args.outdir + str(int(sref_ts.x)) + "_" + str(int(sref_ts.y))
-                    runCCDC(sref_data, toa_data, change_file, args)
+                    
+                    # Block until a core becomes available
+                    while(True):
+
+                        p_done = []
+
+                        for index, p in enumerate(processes):
+                            p.join(timeout=0)
+                                
+                            if(not p.is_alive()):
+                                p_done.append(index)
+
+                        if(p_done):
+                            for index in sorted(p_done, reverse=True): # Need to delete in reverse order to preserve indexes
+                                del(processes[index])
+
+                        if(len(processes) < num_cores):
+                            break
+                                    
+                    process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, args, return_list, x_val, y_val))
+                    processes.append(process)
+                    process.start()
+
+    # Keep running until all processes have finished
+    for p in processes:
+        p.join()
+    
+    # Pandas doesn't recognise Manager lists, so we need to convert it back to an ordinary list
+    rows = return_list[0:len(return_list)]
+
+    to_df = pd.DataFrame(rows).set_index(['y', 'x'])
+    
+    dataset = xr.Dataset.from_dataframe(to_df)
+
+    dataset.attrs['crs'] = 'PROJCS["WGS 84 / UTM zone 55N",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",147],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","32655"]]'
+
+    change_img = args.outdir + "change_map.nc"
+    dataset.to_netcdf(change_img, encoding={'num_changes': {'dtype': 'uint16', '_FillValue': 9999}})
 
 def runOnPixel(sref_products, toa_products, key, args):
 
@@ -452,7 +510,7 @@ def runOnPixel(sref_products, toa_products, key, args):
         for tile_index, tile in tile_list.items():
             dataset = curr_gw.load(tile[0:1, x_val:x_val+1, y_val:y_val+1], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
 
-            if(dataset.notnull()):
+            if(dataset.variables):
                 sref_ds.append(dataset)
 
     for product in toa_products:
@@ -471,7 +529,7 @@ def runOnPixel(sref_products, toa_products, key, args):
         for tile_index, tile in tile_list.items():
             dataset = curr_gw.load(tile[0:1, x_val:x_val+1, y_val:y_val+1], measurements=['green', 'nir', 'swir1'])
 
-            if(dataset.notnull()):
+            if(dataset.variables):
                 toa_ds.append(dataset)
     
     # Check that both datasets are the same length
@@ -496,7 +554,7 @@ def runAll(sref_products, toa_products, args):
 
     """Run on all tiles in the specified datasets. Keys are based on the most recent dataset."""
 
-    num_cores = multiprocessing.cpu_count() - 1
+    num_cores = multiprocessing.cpu_count() - 1 # Leave one core for other stuff
     
     processes = []
 
@@ -528,9 +586,9 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile[0:1, 1500:1501, 0:1], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
+                dataset = gw.load(tile[0:1, 0:1, 0:1], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
 
-                if(dataset.notnull()):
+                if(dataset.variables):
                     sref_ds.append(dataset)
 
         for product in toa_products:
@@ -542,9 +600,9 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile[0:1, 1500:1501, 0:1], measurements=['green', 'nir', 'swir1'])
+                dataset = gw.load(tile[0:1, 0:1, 0:1], measurements=['green', 'nir', 'swir1'])
 
-                if(dataset.notnull()):
+                if(dataset.variables):
                     toa_ds.append(dataset)
 
         dc.close()
@@ -596,7 +654,7 @@ def runAll(sref_products, toa_products, args):
                             if(len(processes) < num_cores):
                                 break
                                     
-                        process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, x_val, y_val, return_list, args))
+                        process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, args, return_list, x_val, y_val))
                         processes.append(process)
                         process.start()
 
@@ -640,7 +698,7 @@ def main(args):
         sref_products.append('ls8_arcsi_sref_ingested')
         toa_products.append('ls8_arcsi_toa_ingested')
 
-    if(args.lowerlat > -1 and args.upperlat > -1 and args.lowerlon > -1 and args.upperlon > -1):
+    if(args.lowerlat and args.upperlat and args.lowerlon and args.upperlon):
 
         if(args.mode == "subsample"):
             runOnSubset(sref_products, toa_products, args)
@@ -651,7 +709,7 @@ def main(args):
         else:
             print("Lat/long boundaries were provided, but mode was not subsample or whole_area.")
 
-    elif(len(args.key) > 1 and args.pixel_x > -1 and args.pixel_y > -1):
+    elif(len(args.key) > 1 and args.pixel_x and args.pixel_y):
 
         if(args.mode == "by_pixel"):
             key = tuple(args.key)
@@ -672,13 +730,13 @@ if __name__ == "__main__":
    
     parser = argparse.ArgumentParser(description="Run CCDC algorithm using Data Cube.", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-d', '--outdir', default="./", help="The output directory for any produced csv files/images/plots.")
-    parser.add_argument('-llat', '--lowerlat', type=float, default=-1, help="The lower latitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
-    parser.add_argument('-ulat', '--upperlat', type=float, default=-1, help="The upper latitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
-    parser.add_argument('-llon', '--lowerlon', type=float, default=-1, help="The lower longitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
-    parser.add_argument('-ulon', '--upperlon', type=float, default=-1, help="The upper longitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
+    parser.add_argument('-llat', '--lowerlat', type=float, default=None, help="The lower latitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
+    parser.add_argument('-ulat', '--upperlat', type=float, default=None, help="The upper latitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
+    parser.add_argument('-llon', '--lowerlon', type=float, default=None, help="The lower longitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
+    parser.add_argument('-ulon', '--upperlon', type=float, default=None, help="The upper longitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
     parser.add_argument('-k', '--key', type=int, nargs='*', default=[], help="The key for the cell to be processed. Must be a tuple of two integers, e.g. 6, -27. Required if using by_pixel argument.")
-    parser.add_argument('-x', '--pixel_x', type=int, default=-1, help="The x value of the pixel to be processed within the specified tile. Required if using by_pixel argument.")
-    parser.add_argument('-y', '--pixel_y', type=int, default=-1, help="The y value of the pixel to be processed within the specified tile. Required if using by_pixel argument.")
+    parser.add_argument('-x', '--pixel_x', type=int, default=None, help="The x value of the pixel to be processed within the specified tile. Required if using by_pixel argument.")
+    parser.add_argument('-y', '--pixel_y', type=int, default=None, help="The y value of the pixel to be processed within the specified tile. Required if using by_pixel argument.")
     parser.add_argument('-p', '--platform', choices=['ls5', 'ls7', 'ls8'], nargs='+', default=['ls5', 'ls7', 'ls8'], help="The platforms to be included.")
     parser.add_argument('-m', '--mode', choices=['whole_area','subsample', 'by_pixel', 'all'], default='subsample', help="Whether the algorithm should be run on a whole (specified) area, a subsample of a (specified) area, a specific pixel, or all available data.")
     parser.add_argument('-num', '--num_points', type=int, default=100, help="Specifies the number of subsamples to take if a random subsample is being processed.")

@@ -299,7 +299,7 @@ def runCCDC(sref_data, toa_data, change_file, x_val, y_val, return_list, args):
                 # Once there is no more data to process, plot the results
                 plt.legend(['Original data', 'Data after RIRLS', 'Start change', 'End change', 'Lasso fit'])
                 plt.tight_layout()
-                change_file = change_file + ".svg"
+                change_file = change_file + ".pdf"
                 plt.savefig(change_file)
                 plt.close(fig)
 

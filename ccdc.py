@@ -382,7 +382,8 @@ def runOnSubset(sref_products, toa_products, args):
                     if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
                         
                         dc.close()
-                        change_file = args.outdir + str(new_point.GetX()) + "_" + str(new_point.GetY())
+                        change_file = args.outdir + "{0:.6f}".format(new_point.GetX()) + "_" + "{0:.6f}".format(new_point.GetX())
+                        
                         runCCDC(sref_data, toa_data, change_file, args)
                         curr_points += 1
 
@@ -443,7 +444,7 @@ def runOnArea(sref_products, toa_products, args):
                     x_val = float(sref_ts.x)
                     y_val = float(sref_ts.x)
                         
-                    change_file = args.outdir + str(int(sref_ts.x)) + "_" + str(int(sref_ts.y))
+                    change_file = args.outdir + str(x_val) + "_" + str(y_val)
                     
                     # Block until a core becomes available
                     while(True):
@@ -546,8 +547,8 @@ def runOnPixel(sref_products, toa_products, key, args):
         toa_data = transformToDf(toa)
 
         if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
-            dc.close()
-            change_file = args.outdir + str(int(sref.x)) + "_" + str(int(sref.y))
+            
+            change_file = args.outdir + str(float(sref.x)) + "_" + str(float(sref.y))
             runCCDC(sref_data, toa_data, change_file, args)
 
 def runAll(sref_products, toa_products, args):

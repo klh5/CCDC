@@ -15,7 +15,7 @@ class MakeCCDCModel(object):
         self.RMSE = None
         self.coefficients = None
 
-    def fit_model(self, model_num):
+    def fitModel(self, model_num):
         
         """Finds the coefficients by fitting a Lasso model to the data"""
         
@@ -35,31 +35,31 @@ class MakeCCDCModel(object):
         
         self.coefficients = self.lasso_model.params
         
-    def get_prediction(self, date_to_predict):
+    def getPrediction(self, date_to_predict):
     
         """Returns a predicted value for a give date based on the current model"""
     
         return self.lasso_model.predict({'datetime': [date_to_predict]})
         
-    def get_coefficients(self):
+    def getCoefficients(self):
         
         """Returns the list of coefficients for this model"""
         
         if(self.coefficients.any()):
             return self.coefficients
 
-    def get_rmse(self):
+    def getRMSE(self):
         
         """Returns the RMSE value, which is used to find change in the model"""
     
         if(self.RMSE != None):
             return self.RMSE
 
-    def get_band_data(self):
+    def getBandData(self):
 
         return self.band_data
 
-    def get_num_coeffs(self):
+    def getNumCoeffs(self):
 		
         return len(self.coefficients)
 

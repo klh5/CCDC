@@ -21,7 +21,7 @@ from random import uniform
 model_list = [None for i in range(5)]     # List of models, one for each band
 plt_list = []                             # List of plots, one for each band
 
-def add_change_marker(num_bands, start_change, end_change, obs_data, plot_data):
+def addChangeMarker(num_bands, start_change, end_change, obs_data, plot_data):
 
     """ Adds vertical lines to each plot every time change is detected """
    
@@ -43,7 +43,7 @@ def setupModels(all_band_data, num_bands, init_obs):
         
         ccdc_model = MakeCCDCModel(band_data)
         
-        ccdc_model.fit_model(init_obs)
+        ccdc_model.fitModel(init_obs)
         
         model_list[i] = ccdc_model
 
@@ -75,7 +75,7 @@ def transformToDf(dataset_to_transform):
 
     return new_df
 
-def init_model(pixel_data, num_bands, init_obs):
+def initModel(pixel_data, num_bands, init_obs):
 
     """Finds a sequence of 6/12/18/24 consecutive clear observations without any change, to initialize the model"""
 
@@ -111,13 +111,13 @@ def init_model(pixel_data, num_bands, init_obs):
         # Check for change during the initialization period. We need 12 observations with no change
         for band_model in model_list: # For each model
             
-            slope_val = np.absolute(band_model.get_coefficients()['datetime']) / (3 * band_model.get_rmse() / total_time)
+            slope_val = np.absolute(band_model.getCoefficients()['datetime']) / (3 * band_model.getRMSE() / total_time)
             total_slope_eval += slope_val
         
-            start_val = np.absolute((band_model.get_band_data()['reflectance'].iloc[0] - band_model.get_band_data()['predicted'].iloc[0])) / (3 * band_model.get_rmse())
+            start_val = np.absolute((band_model.getBandData()['reflectance'].iloc[0] - band_model.getBandData()['predicted'].iloc[0])) / (3 * band_model.getRMSE())
             total_start_eval += start_val
             
-            end_val = np.absolute((band_model.get_band_data()['reflectance'].iloc[num_data_points-1] - band_model.get_band_data()['predicted'].iloc[num_data_points-1])) / (3 * band_model.get_rmse())
+            end_val = np.absolute((band_model.getBandData()['reflectance'].iloc[num_data_points-1] - band_model.getBandData()['predicted'].iloc[num_data_points-1])) / (3 * band_model.getRMSE())
             total_end_eval += end_val
         
         if((total_slope_eval / num_bands) > 1 or (total_start_eval / num_bands) > 1 or (total_end_eval / num_bands) > 1):
@@ -137,7 +137,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
         are not enough observations remaining."""
     
     try:
-        model_data, next_obs = init_model(pixel_data, num_bands, init_obs)
+        model_data, next_obs = initModel(pixel_data, num_bands, init_obs)
     except TypeError:
         return []
 
@@ -154,7 +154,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
         
         for model_num, band_model in enumerate(model_list):    # For each band
             new_ref_obs = new_obs[model_num+1]
-            residual_val = np.absolute((new_ref_obs - band_model.get_prediction(new_date)[0])) / (2 * band_model.get_rmse())
+            residual_val = np.absolute((new_ref_obs - band_model.getPrediction(new_date)[0])) / (2 * band_model.getRMSE())
             change_eval += residual_val
 
         if((change_eval / num_bands) <= 1):
@@ -173,7 +173,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             #print("Change detected!")
             
             if(args.outtype == 'plot'):
-                add_change_marker(num_bands, change_start_time, new_date, pixel_data, model_data)
+                addChangeMarker(num_bands, change_start_time, new_date, pixel_data, model_data)
 
             else:
                with open(change_file, 'a') as output_file:

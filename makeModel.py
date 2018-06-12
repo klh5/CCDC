@@ -5,7 +5,7 @@ class MakeCCDCModel(object):
 
     def __init__(self, band_data):
         
-        self.T = 365
+        self.T = 365.25
         self.pi_val_simple = (2 * np.pi) / self.T
         self.pi_val_advanced = (4 * np.pi) / self.T
         self.pi_val_full = (6 * np.pi) / self.T
@@ -31,7 +31,7 @@ class MakeCCDCModel(object):
         self.lasso_model = lasso_model.fit_regularized(alpha=0.001, maxiter=5, L1_wt = 1.0)
         self.band_data['predicted'] = self.lasso_model.predict()
     
-        self.RMSE = np.sqrt(np.mean(((self.band_data['predicted'] - self.band_data['reflectance']) ** 2)))
+        self.RMSE = np.sqrt(np.mean((self.band_data['predicted'] - self.band_data['reflectance']) ** 2))
         
         self.coefficients = self.lasso_model.params
         

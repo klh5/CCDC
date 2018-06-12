@@ -16,7 +16,6 @@ from removeOutliers import RLMRemoveOutliers
 from datetime import datetime
 from osgeo import ogr
 from random import uniform
-from scipy.interpolate import interp1d
 
 # Set up list of models
 model_list = [None for i in range(5)]     # List of models, one for each band
@@ -24,11 +23,7 @@ plt_list = []                             # List of plots, one for each band
 
 def add_change_marker(num_bands, start_change, end_change, obs_data, plot_data):
 
-    """ Adds a vertical line to each plot every time change is detected """
-    T = 365
-    pi_val_simple = (2 * np.pi) / T
-    pi_val_advanced = (4 * np.pi) / T
-    pi_val_full = (6 * np.pi) / T
+    """ Adds vertical lines to each plot every time change is detected """
    
     for i in range(num_bands):
         y_min = np.amin(obs_data.iloc[:,i+1])
@@ -36,19 +31,6 @@ def add_change_marker(num_bands, start_change, end_change, obs_data, plot_data):
 
         plt_list[i].plot([start_change, start_change], [y_min, y_max], 'r', linewidth=1, label="Start change")
         plt_list[i].plot([end_change, end_change], [y_min, y_max], 'y', linewidth=1, label="End change")
-
-        num_coeffs = model_list[i].get_num_coeffs()
-
-        if(num_coeffs == 4):
-            interp = interp1d(plot_data.datetime, model_list[i].get_coefficients()[0] + (model_list[i].get_coefficients()[1]*(np.cos(pi_val_simple * plot_data.datetime))) + (model_list[i].get_coefficients()[2]*(np.sin(pi_val_simple * plot_data.datetime))) + model_list[i].get_coefficients()[3]*plot_data.datetime, kind='linear')
-
-        elif(num_coeffs == 6):
-            interp = interp1d(plot_data.datetime, model_list[i].get_coefficients()[0] + (model_list[i].get_coefficients()[1]*(np.cos(pi_val_simple * plot_data.datetime))) + (model_list[i].get_coefficients()[2]*(np.sin(pi_val_simple * plot_data.datetime))) + (model_list[i].get_coefficients()[3]*(np.cos(pi_val_advanced * plot_data.datetime))) + (model_list[i].get_coefficients()[4]*(np.sin(pi_val_advanced * plot_data.datetime))) + model_list[i].get_coefficients()[5]*plot_data.datetime, kind='linear')
-
-        else:
-            interp = interp1d(plot_data.datetime, model_list[i].get_coefficients()[0] + (model_list[i].get_coefficients()[1]*(np.cos(pi_val_simple * plot_data.datetime))) + (model_list[i].get_coefficients()[2]*(np.sin(pi_val_simple * plot_data.datetime))) + (model_list[i].get_coefficients()[3]*(np.cos(pi_val_advanced * plot_data.datetime))) + (model_list[i].get_coefficients()[4]*(np.sin(pi_val_advanced * plot_data.datetime))) + (model_list[i].get_coefficients()[5]*(np.sin(pi_val_full * plot_data.datetime))) + (model_list[i].get_coefficients()[6]*(np.cos(pi_val_full * plot_data.datetime))) + model_list[i].get_coefficients()[7]*plot_data.datetime, kind='linear')
-
-        plt_list[i].plot(plot_data.datetime, interp(plot_data.datetime), 'b', linewidth=1, label="Lasso fit")
 
 def setupModels(all_band_data, num_bands, init_obs):
     
@@ -119,19 +101,18 @@ def init_model(pixel_data, num_bands, init_obs):
         # Re-initialize the models
         setupModels(curr_obs_list, num_bands, init_obs)
         
-        # Get cumulative time
-        total_time = curr_obs_list['datetime'].sum()
+        # Get total time used for model initialization
+        total_time = np.max(curr_obs_list['datetime']) - np.min(curr_obs_list['datetime'])
         
         total_slope_eval = 0
         total_start_eval = 0
         total_end_eval = 0
-        
+  
         # Check for change during the initialization period. We need 12 observations with no change
         for band_model in model_list: # For each model
             
-            for row in band_model.get_band_data().iterrows():
-                slope_val = np.absolute(((band_model.get_coefficients()['datetime']) * row[0])) / 3 * (band_model.get_rmse() / total_time)
-                total_slope_eval += slope_val
+            slope_val = np.absolute(band_model.get_coefficients()['datetime']) / (3 * band_model.get_rmse() / total_time)
+            total_slope_eval += slope_val
         
             start_val = np.absolute((band_model.get_band_data()['reflectance'].iloc[0] - band_model.get_band_data()['predicted'].iloc[0])) / (3 * band_model.get_rmse())
             total_start_eval += start_val
@@ -139,7 +120,7 @@ def init_model(pixel_data, num_bands, init_obs):
             end_val = np.absolute((band_model.get_band_data()['reflectance'].iloc[num_data_points-1] - band_model.get_band_data()['predicted'].iloc[num_data_points-1])) / (3 * band_model.get_rmse())
             total_end_eval += end_val
         
-        if(total_slope_eval > 1 or total_start_eval > 1 or total_end_eval > 1):
+        if((total_slope_eval / num_bands) > 1 or (total_start_eval / num_bands) > 1 or (total_end_eval / num_bands) > 1):
             num_iters += 1
             curr_obs_list = pixel_data.iloc[0+num_iters:init_obs+num_iters,:] # Shift along 1 row
         
@@ -175,8 +156,8 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             new_ref_obs = new_obs[model_num+1]
             residual_val = np.absolute((new_ref_obs - band_model.get_prediction(new_date)[0])) / (2 * band_model.get_rmse())
             change_eval += residual_val
-        
-        if(change_eval <= 1):
+
+        if((change_eval / num_bands) <= 1):
             #print("Adding new data point")
             model_data.append(new_obs, ignore_index=True)
             setupModels(model_data, num_bands, init_obs)
@@ -184,6 +165,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
 
         else:
             change_flag += 1 # Don't add the new pixel to the model
+
             if(change_flag == 1): # If this is the first observed possible change point
                 change_start_time = new_date
     
@@ -297,7 +279,7 @@ def runCCDC(sref_data, toa_data, change_file, args, return_list=1, x_val=None, y
             if(args.outtype == 'plot'):
 
                 # Once there is no more data to process, plot the results
-                plt.legend(['Original data', 'Data after RIRLS', 'Start change', 'End change', 'Lasso fit'])
+                plt.legend(['Original data', 'Data after RIRLS', 'Start change', 'End change'])
                 plt.tight_layout()
                 change_file = change_file + ".pdf"
                 plt.savefig(change_file)
@@ -571,8 +553,6 @@ def runAll(sref_products, toa_products, args):
     # Get list of cell keys for most recent dataset
     keys = list(gw.list_cells(product=sref_products[-1]).keys())
 
-    keys = [(5, -28)]
-
     for key in keys:
 
         sref_ds = []
@@ -587,7 +567,7 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile[0:1, 0:1, 0:1], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
+                dataset = gw.load(tile, measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
 
                 if(dataset.variables):
                     sref_ds.append(dataset)
@@ -601,7 +581,7 @@ def runAll(sref_products, toa_products, args):
 
             # Load all tiles
             for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile[0:1, 0:1, 0:1], measurements=['green', 'nir', 'swir1'])
+                dataset = gw.load(tile, measurements=['green', 'nir', 'swir1'])
 
                 if(dataset.variables):
                     toa_ds.append(dataset)

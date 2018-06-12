@@ -6,7 +6,7 @@ class RLMRemoveOutliers(object):
 
     def __init__(self):
         
-        self.T = 365
+        self.T = 365.25
         self.pi_val = (2 * np.pi) / self.T
         self.pi_val_change = None
         self.green_model = None

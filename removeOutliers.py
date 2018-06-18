@@ -1,3 +1,7 @@
+'''
+Implements Tmask according to the paper: Automated cloud, cloud shadow, and snow detection in multitemporal Landsat data: An algorithm designed specifically for monitoring land cover change (2014) by Z. Zhu and C. Woodcock.
+'''
+
 import numpy as np
 import statsmodels.formula.api as smf
 import statsmodels as sm

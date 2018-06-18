@@ -231,7 +231,7 @@ def runCCDC(sref_data, toa_data, change_file, args, return_list=1, x_val=None, y
                 for i in range(num_bands):
                     plt_list.append(fig.add_subplot(num_bands, 1, i+1))
                     band_col = ts_data.columns[i+1]
-                    plt_list[i].plot(sref_data['datetime'], sref_data.iloc[:,i+1], 'o', color='0.5', label='Original data', markersize=3)
+                    plt_list[i].plot(sref_data['datetime'], sref_data.iloc[:,i+1], 'o', color='b', label='Original data', markersize=3)
                     plt_list[i].plot(ts_data['datetime'], ts_data.iloc[:,i+1], 'o', color='k', label='Data after RIRLS', markersize=3)
                     plt_list[i].set_ylabel(band_col)
                     myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
@@ -679,7 +679,7 @@ def main(args):
         sref_products.append('ls8_arcsi_sref_ingested')
         toa_products.append('ls8_arcsi_toa_ingested')
 
-    if(args.lowerlat and args.upperlat and args.lowerlon and args.upperlon):
+    if(args.lowerlat is not None and args.upperlat is not None and args.lowerlon is not None and args.upperlon is not None):
 
         if(args.mode == "subsample"):
             runOnSubset(sref_products, toa_products, args)
@@ -690,7 +690,7 @@ def main(args):
         else:
             print("Lat/long boundaries were provided, but mode was not subsample or whole_area.")
 
-    elif(len(args.key) > 1 and args.pixel_x and args.pixel_y):
+    elif(len(args.key) > 1 and args.pixel_x is not None and args.pixel_y is not None):
 
         if(args.mode == "by_pixel"):
             key = tuple(args.key)

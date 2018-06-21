@@ -93,6 +93,10 @@ class MakeCCDCModel(object):
     def getNumCoeffs(self):
 		
         return len(self.coefficients)
+    
+    def getBandData(self):
+        
+        return self.band_data
 
 
 

@@ -34,7 +34,8 @@ class MakeCCDCModel(object):
         self.RMSE = np.sqrt(np.mean((self.band_data['reflectance'] - self.band_data['predicted']) ** 2))
         
         self.coefficients = self.lasso_model.params
-        
+        print(self.coefficients)
+ 
     def getPrediction(self, date_to_predict):
     
         """Returns a predicted value for a give date based on the current model"""

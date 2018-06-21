@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datacube.storage.masking import mask_invalid_data
 from datacube.api import GridWorkflow
-from makeModel import MakeCCDCModel
+from makeModel_scikit import MakeCCDCModel
 from removeOutliers import RLMRemoveOutliers
 from datetime import datetime
 from osgeo import ogr
@@ -116,7 +116,7 @@ def initModel(pixel_data, num_bands, init_obs):
             
             end_val = np.absolute((band_model.getBandData()['reflectance'].iloc[num_data_points-1] - band_model.getBandData()['predicted'].iloc[num_data_points-1])) / (3 * band_model.getRMSE())
             total_end_eval += end_val
-        print(total_slope_eval / num_bands, total_start_eval / num_bands, total_end_eval / num_bands)        
+ 
         if((total_slope_eval / num_bands) > 1 or (total_start_eval / num_bands) > 1 or (total_end_eval / num_bands) > 1):
             num_iters += 1
             curr_obs_list = pixel_data.iloc[0+num_iters:init_obs+num_iters,:] # Shift along 1 row
@@ -153,7 +153,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             new_ref_obs = new_obs[model_num+1]
             residual_val = np.absolute((new_ref_obs - band_model.getPrediction(new_date)[0])) / (2 * band_model.getRMSE())
             change_eval += residual_val
-        print(change_eval/num_bands)
+        
         if((change_eval / num_bands) <= 1):
             #print("Adding new data point")
             model_data.append(new_obs, ignore_index=True)

@@ -38,7 +38,7 @@ class MakeCCDCModel(object):
     def getPrediction(self, date_to_predict):
     
         """Returns a predicted value for a give date based on the current model"""
-    
+        
         return self.lasso_model.predict({'datetime': [date_to_predict]})
         
     def getCoefficients(self):

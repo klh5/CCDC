@@ -40,11 +40,11 @@ def setupModels(all_band_data, num_bands, init_obs):
     for i in range(num_bands):
         
         band_data = pd.DataFrame({'datetime': all_band_data['datetime'], 'reflectance': all_band_data.iloc[:,i+1]})
-        
+        print("created subset")
         ccdc_model = MakeCCDCModel(band_data)
-        
+        print("created model object")
         ccdc_model.fitModel(init_obs)
-        
+        print("model fitted")
         model_list[i] = ccdc_model
 
 def getNumYears(date_list):

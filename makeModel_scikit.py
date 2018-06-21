@@ -25,7 +25,7 @@ class MakeCCDCModel(object):
                       np.sin(self.pi_val_simple * self.band_data.datetime)])
 
         if(model_num >= 18):
-            x = np.vstack((x, np.array([np.cos(self.pi_val_advanced * self.band_datetime),
+            x = np.vstack((x, np.array([np.cos(self.pi_val_advanced * self.band_data.datetime),
                       np.sin(self.pi_val_advanced * self.band_data.datetime)])))
     
         if(model_num >= 24):

@@ -88,10 +88,10 @@ def initModel(pixel_data, num_bands, init_obs):
     
     # The next observation to be added to the model to detect change
     init_end = None
-    
+    print("1")
     # Model initialization sequence - keeps going until a clear set of observations is found
     while(model_init == False):
-        
+        print("2")
         num_data_points = len(curr_obs_list)
         
         if(num_data_points < init_obs):
@@ -100,7 +100,7 @@ def initModel(pixel_data, num_bands, init_obs):
     
         # Re-initialize the models
         setupModels(curr_obs_list, num_bands, init_obs)
-        
+        print("3")
         # Get total time used for model initialization
         total_time = np.max(curr_obs_list['datetime']) - np.min(curr_obs_list['datetime'])
         
@@ -110,7 +110,7 @@ def initModel(pixel_data, num_bands, init_obs):
   
         # Check for change during the initialization period. We need 12 observations with no change
         for band_model in model_list: # For each model
-            
+            print("4")
             slope_val = np.absolute(band_model.getCoefficients()[0]) / (3 * band_model.getRMSE() / total_time)
             total_slope_eval += slope_val
         

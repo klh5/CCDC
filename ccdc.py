@@ -40,11 +40,8 @@ def setupModels(all_band_data, num_bands, init_obs):
     for i in range(num_bands):
         
         band_data = pd.DataFrame({'datetime': all_band_data['datetime'], 'reflectance': all_band_data.iloc[:,i+1]})
-        print("created subset")
         ccdc_model = MakeCCDCModel(band_data)
-        print("created model object")
         ccdc_model.fitModel(init_obs)
-        print("model fitted")
         model_list[i] = ccdc_model
 
 def getNumYears(date_list):
@@ -78,7 +75,7 @@ def transformToDf(dataset_to_transform):
 def initModel(pixel_data, num_bands, init_obs):
 
     """Finds a sequence of 6/12/18/24 consecutive clear observations without any change, to initialize the model"""
-    print("initializing model")
+
     # Subset first n clear observations for model initialisation
     curr_obs_list = pixel_data.iloc[0:init_obs,:]
     
@@ -88,19 +85,19 @@ def initModel(pixel_data, num_bands, init_obs):
     
     # The next observation to be added to the model to detect change
     init_end = None
-    print("1")
+
     # Model initialization sequence - keeps going until a clear set of observations is found
     while(model_init == False):
-        print("2")
+
         num_data_points = len(curr_obs_list)
         
         if(num_data_points < init_obs):
-            print("Could not find a period of no change for model initialization.")
+            #print("Could not find a period of no change for model initialization.")
             return None
     
         # Re-initialize the models
         setupModels(curr_obs_list, num_bands, init_obs)
-        print("3")
+
         # Get total time used for model initialization
         total_time = np.max(curr_obs_list['datetime']) - np.min(curr_obs_list['datetime'])
         
@@ -110,7 +107,7 @@ def initModel(pixel_data, num_bands, init_obs):
   
         # Check for change during the initialization period. We need 12 observations with no change
         for band_model in model_list: # For each model
-            print("4")
+
             slope_val = np.absolute(band_model.getCoefficients()[0]) / (3 * band_model.getRMSE() / total_time)
             total_slope_eval += slope_val
         
@@ -127,7 +124,7 @@ def initModel(pixel_data, num_bands, init_obs):
         else:
             model_init = True
             init_end = init_obs + num_iters + 1
-            print("Model initialized. Iterations needed: {}".format(num_iters))
+            #print("Model initialized. Iterations needed: {}".format(num_iters))
 
     return curr_obs_list, init_end
 
@@ -135,7 +132,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
     
     """Continues to add data points to the model until either a new breakpoint is detected, or there
         are not enough observations remaining."""
-    print("finding change")
+
     try:
         model_data, next_obs = initModel(pixel_data, num_bands, init_obs)
     except TypeError:
@@ -158,7 +155,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             change_eval += residual_val
 
         if((change_eval / num_bands) <= 1):
-            print("Adding new data point")
+            #print("Adding new data point")
             model_data.append(new_obs, ignore_index=True)
             setupModels(model_data, num_bands, init_obs)
             change_flag = 0 # Reset change flag because we have an inlier
@@ -170,7 +167,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
                 change_start_time = new_date
     
         if(change_flag == 6):
-            print("Change detected!")
+            #print("Change detected!")
             
             if(args.outtype == 'plot'):
                 addChangeMarker(num_bands, change_start_time, new_date, pixel_data, model_data)

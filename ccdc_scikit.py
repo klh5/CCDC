@@ -107,7 +107,7 @@ def initModel(pixel_data, num_bands, init_obs):
   
         # Check for change during the initialization period. We need 12 observations with no change
         for band_model in model_list: # For each model
-
+            
             slope_val = np.absolute(band_model.getCoefficients()[0]) / (3 * band_model.getRMSE() / total_time)
             total_slope_eval += slope_val
         

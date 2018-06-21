@@ -34,7 +34,7 @@ class MakeCCDCModel(object):
     
         x = x.T
 
-        clf = linear_model.Lasso(fit_intercept=True, max_iter=5)
+        clf = linear_model.Lasso(alpha=0.001, fit_intercept=True, max_iter=5)
 
         self.lasso_model = clf.fit(x, self.band_data.reflectance.values.reshape(-1,1))
               

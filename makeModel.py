@@ -31,7 +31,7 @@ class MakeCCDCModel(object):
         self.lasso_model = lasso_model.fit_regularized(alpha=0.001, maxiter=5, L1_wt = 1.0)
         self.band_data['predicted'] = self.lasso_model.predict()
     
-        self.RMSE = np.sqrt(np.mean((self.band_data['predicted'] - self.band_data['reflectance']) ** 2))
+        self.RMSE = np.sqrt(np.mean((self.band_data['reflectance'] - self.band_data['predicted']) ** 2))
         
         self.coefficients = self.lasso_model.params
         

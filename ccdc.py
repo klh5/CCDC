@@ -78,7 +78,7 @@ def transformToDf(dataset_to_transform):
 def initModel(pixel_data, num_bands, init_obs):
 
     """Finds a sequence of 6/12/18/24 consecutive clear observations without any change, to initialize the model"""
-
+    print("initializing model")
     # Subset first n clear observations for model initialisation
     curr_obs_list = pixel_data.iloc[0:init_obs,:]
     
@@ -95,7 +95,7 @@ def initModel(pixel_data, num_bands, init_obs):
         num_data_points = len(curr_obs_list)
         
         if(num_data_points < init_obs):
-            #print("Could not find a period of no change for model initialization.")
+            print("Could not find a period of no change for model initialization.")
             return None
     
         # Re-initialize the models
@@ -127,7 +127,7 @@ def initModel(pixel_data, num_bands, init_obs):
         else:
             model_init = True
             init_end = init_obs + num_iters + 1
-            #print("Model initialized. Iterations needed: {}".format(num_iters))
+            print("Model initialized. Iterations needed: {}".format(num_iters))
 
     return curr_obs_list, init_end
 
@@ -135,7 +135,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
     
     """Continues to add data points to the model until either a new breakpoint is detected, or there
         are not enough observations remaining."""
-    
+    print("finding change")
     try:
         model_data, next_obs = initModel(pixel_data, num_bands, init_obs)
     except TypeError:
@@ -158,7 +158,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             change_eval += residual_val
 
         if((change_eval / num_bands) <= 1):
-            #print("Adding new data point")
+            print("Adding new data point")
             model_data.append(new_obs, ignore_index=True)
             setupModels(model_data, num_bands, init_obs)
             change_flag = 0 # Reset change flag because we have an inlier
@@ -170,7 +170,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
                 change_start_time = new_date
     
         if(change_flag == 6):
-            #print("Change detected!")
+            print("Change detected!")
             
             if(args.outtype == 'plot'):
                 addChangeMarker(num_bands, change_start_time, new_date, pixel_data, model_data)
@@ -247,7 +247,6 @@ def runCCDC(sref_data, toa_data, change_file, args, return_list=1, x_val=None, y
             while(len(ts_data) >= 12):
                 if(getNumYears(ts_data['datetime']) > 0):
 
-                    
                     # Get total number of clear observations in the dataset
                     num_clear_obs = len(ts_data)
             
@@ -514,8 +513,7 @@ def runOnPixel(sref_products, toa_products, key, args):
 
             if(dataset.variables):
                 toa_ds.append(dataset)
-    print(sref_ds)
-    print(toa_ds)
+
     # Check that both datasets are the same length
     if(len(sref_ds) == len(toa_ds) and len(sref_ds) > 0 and len(toa_ds) > 0):
 
@@ -530,7 +528,7 @@ def runOnPixel(sref_products, toa_products, key, args):
         toa_data = transformToDf(toa)
 
         if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
-            print(sref_data)
+
             change_file = args.outdir + str(float(sref.x)) + "_" + str(float(sref.y))
             runCCDC(sref_data, toa_data, change_file, args)
 

@@ -4,14 +4,13 @@ from sklearn import linear_model
 
 class MakeCCDCModel(object):
 
-    def __init__(self, band_data, band):
+    def __init__(self, band_data):
         
         self.T = 365.25
         self.pi_val_simple = (2 * np.pi) / self.T
         self.pi_val_advanced = (4 * np.pi) / self.T
         self.pi_val_full = (6 * np.pi) / self.T
         self.band_data = band_data
-        self.band = band
         
         self.lasso_model = None
         self.RMSE = None
@@ -94,10 +93,6 @@ class MakeCCDCModel(object):
     def getNumCoeffs(self):
 		
         return len(self.coefficients)
-
-    def getBandName(self):
-		
-        return self.band
 
 
 

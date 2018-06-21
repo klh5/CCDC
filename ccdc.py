@@ -514,7 +514,8 @@ def runOnPixel(sref_products, toa_products, key, args):
 
             if(dataset.variables):
                 toa_ds.append(dataset)
-    
+    print(sref_ds)
+    print(toa_ds)
     # Check that both datasets are the same length
     if(len(sref_ds) == len(toa_ds) and len(sref_ds) > 0 and len(toa_ds) > 0):
 
@@ -529,7 +530,7 @@ def runOnPixel(sref_products, toa_products, key, args):
         toa_data = transformToDf(toa)
 
         if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
-            
+            print(sref_data)
             change_file = args.outdir + str(float(sref.x)) + "_" + str(float(sref.y))
             runCCDC(sref_data, toa_data, change_file, args)
 

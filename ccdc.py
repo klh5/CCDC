@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datacube.storage.masking import mask_invalid_data
 from datacube.api import GridWorkflow
-from makeModel import MakeCCDCModel
+from makeModel_scikit import MakeCCDCModel
 from removeOutliers import RLMRemoveOutliers
 from datetime import datetime
 from osgeo import ogr
@@ -111,7 +111,7 @@ def initModel(pixel_data, num_bands, init_obs):
         # Check for change during the initialization period. We need 12 observations with no change
         for band_model in model_list: # For each model
             
-            slope_val = np.absolute(band_model.getCoefficients()['datetime']) / (3 * band_model.getRMSE() / total_time)
+            slope_val = np.absolute(band_model.getCoefficients()[0]) / (3 * band_model.getRMSE() / total_time)
             total_slope_eval += slope_val
         
             start_val = np.absolute((band_model.getBandData()['reflectance'].iloc[0] - band_model.getBandData()['predicted'].iloc[0])) / (3 * band_model.getRMSE())

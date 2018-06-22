@@ -1,5 +1,4 @@
 import numpy as np
-import statsmodels.formula.api as smf
 from sklearn import linear_model
 
 class MakeCCDCModel(object):
@@ -15,26 +14,28 @@ class MakeCCDCModel(object):
         self.lasso_model = None
         self.RMSE = None
         self.coefficients = None
+        self.start_date = self.band_data.datetime.min()
 
     def fitModel(self, model_num):
         
         """Finds the coefficients by fitting a Lasso model to the data"""
+        rescaled = self.band_data.datetime - self.start_date
         
-        x = np.array([self.band_data.datetime,
-                      np.cos(self.pi_val_simple * self.band_data.datetime),
-                      np.sin(self.pi_val_simple * self.band_data.datetime)])
+        x = np.array([rescaled,
+                      np.cos(self.pi_val_simple * rescaled),
+                      np.sin(self.pi_val_simple * rescaled)])
 
         if(model_num >= 18):
-            x = np.vstack((x, np.array([np.cos(self.pi_val_advanced * self.band_data.datetime),
-                      np.sin(self.pi_val_advanced * self.band_data.datetime)])))
+            x = np.vstack((x, np.array([np.cos(self.pi_val_advanced * rescaled),
+                      np.sin(self.pi_val_advanced * rescaled)])))
     
         if(model_num >= 24):
-            x = np.vstack((x, np.array([np.cos(self.pi_val_full * self.band_data.datetime),
-                      np.sin(self.pi_val_full * self.band_data.datetime)])))
+            x = np.vstack((x, np.array([np.cos(self.pi_val_full * rescaled),
+                      np.sin(self.pi_val_full * rescaled)])))
     
         x = x.T
 
-        clf = linear_model.Lasso(alpha=0.001, fit_intercept=True, max_iter=5)
+        clf = linear_model.Lasso(fit_intercept=True, alpha=10, max_iter=50) # 1000 is default for scikit
 
         self.lasso_model = clf.fit(x, self.band_data.reflectance.values.reshape(-1,1))
               
@@ -42,15 +43,15 @@ class MakeCCDCModel(object):
     
         self.RMSE = np.sqrt(np.mean((self.band_data.reflectance - self.band_data.predicted) ** 2))
         
-        self.coefficients = self.lasso_model.coef_
-        for index,coeff in enumerate(self.coefficients):
-            print("Intercept", self.lasso_model.intercept_)
-            print(index, coeff) 
+        self.coefficients = self.lasso_model.coef_ 
 
     def getPrediction(self, date_to_predict):
     
         """Returns the predicted value for a given date based on the current model"""
-
+        
+        # Rescale date so that it starts from 0
+        date_to_predict = date_to_predict - self.start_date
+        
         x = np.array([[date_to_predict],
                       [np.cos(self.pi_val_simple * date_to_predict)],
                       [np.sin(self.pi_val_simple * date_to_predict)]])
@@ -64,7 +65,6 @@ class MakeCCDCModel(object):
                       [np.sin(self.pi_val_full * date_to_predict)]])))
     
         x = x.T
-        
         return self.lasso_model.predict(x.reshape(1,-1))
         
     def getCoefficients(self):

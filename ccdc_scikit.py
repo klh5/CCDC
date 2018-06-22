@@ -40,7 +40,9 @@ def setupModels(all_band_data, num_bands, init_obs):
     for i in range(num_bands):
         
         band_data = pd.DataFrame({'datetime': all_band_data['datetime'], 'reflectance': all_band_data.iloc[:,i+1]})
+        
         ccdc_model = MakeCCDCModel(band_data)
+            
         ccdc_model.fitModel(init_obs)
         model_list[i] = ccdc_model
 

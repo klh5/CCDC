@@ -202,7 +202,7 @@ def runCCDC(sref_data, toa_data, change_file, args, return_list=1, x_val=None, y
     toa_data.sort_values(by=['datetime'], inplace=True)
 
     # Very important that both datasets contain the same number of observations
-    if(len(sref_data) == len(toa_data)):
+    if(sref_data.datetime.equals(toa_data.datetime)):
         
         # Get the number of years covered by the dataset
         num_years = getNumYears(sref_data['datetime'])
@@ -282,7 +282,7 @@ def runCCDC(sref_data, toa_data, change_file, args, return_list=1, x_val=None, y
                 plt.close(fig)
                 
 
-            if not(return_list): # Return_list is 1 (true) if a list is not passed, false otherwise
+            if(isinstance(return_list, multiprocessing.managers.ListProxy)): # Not all functions use multiprocessing
                 return_list.append({'x': x_val, 'y': y_val, 'num_changes': num_changes})
                   
     #else:

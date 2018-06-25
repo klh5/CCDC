@@ -35,7 +35,7 @@ class MakeCCDCModel(object):
     
         x = x.T
 
-        clf = linear_model.Lasso(fit_intercept=True, alpha=10, max_iter=50) # 1000 is default for scikit
+        clf = linear_model.Lasso(fit_intercept=True, alpha=10, max_iter=50) # Max_iters needs to match statsmodels
 
         self.lasso_model = clf.fit(x, self.band_data.reflectance.values.reshape(-1,1))
               

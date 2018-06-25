@@ -185,7 +185,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
     # No change detected, end of data reached
     return []
 
-def runCCDC(sref_data, toa_data, change_file, args, return_list=1, x_val=None, y_val=None):
+def runCCDC(sref_data, toa_data, change_file, args, x_val=None, y_val=None):
 
     """The main function which runs the CCDC algorithm. Loops until there are not enough observations
         left after a breakpoint to attempt to initialize a new model."""
@@ -280,11 +280,7 @@ def runCCDC(sref_data, toa_data, change_file, args, return_list=1, x_val=None, y
                 change_file = change_file + ".pdf"
                 plt.savefig(change_file)
                 plt.close(fig)
-                
-
-            if(isinstance(return_list, multiprocessing.managers.ListProxy)): # Not all functions use multiprocessing
-                return_list.append({'x': x_val, 'y': y_val, 'num_changes': num_changes})
-                  
+                                 
     #else:
         #print('SREF and TOA data not the same length. Check indexing/ingestion.')
 
@@ -375,11 +371,7 @@ def runOnArea(sref_products, toa_products, args):
     
     num_cores = multiprocessing.cpu_count() - 1 # Leave one core for other stuff
     
-    processes = []
-
-    # Set up list to enable all processes to send their results back
-    manager = multiprocessing.Manager()
-    return_list = manager.list()    
+    processes = [] 
 
     dc = datacube.Datacube()
 
@@ -442,25 +434,13 @@ def runOnArea(sref_products, toa_products, args):
                         if(len(processes) < num_cores):
                             break
                                     
-                    process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, args, return_list, x_val, y_val))
+                    process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, args, x_val, y_val))
                     processes.append(process)
                     process.start()
 
     # Keep running until all processes have finished
     for p in processes:
         p.join()
-    
-    # Pandas doesn't recognise Manager lists, so we need to convert it back to an ordinary list
-    rows = return_list[0:len(return_list)]
-
-    to_df = pd.DataFrame(rows).set_index(['y', 'x'])
-    
-    dataset = xr.Dataset.from_dataframe(to_df)
-
-    dataset.attrs['crs'] = 'PROJCS["WGS 84 / UTM zone 55N",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",147],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","32655"]]'
-
-    change_img = args.outdir + "change_map.nc"
-    dataset.to_netcdf(change_img, encoding={'num_changes': {'dtype': 'uint16', '_FillValue': 9999}})
 
 def runOnPixel(sref_products, toa_products, key, args):
 
@@ -536,10 +516,6 @@ def runAll(sref_products, toa_products, args):
     num_cores = multiprocessing.cpu_count() - 1 # Leave one core for other stuff
     
     processes = []
-
-    # Set up list to enable all processes to send their results back
-    manager = multiprocessing.Manager()
-    return_list = manager.list()
 
     dc = datacube.Datacube()
 
@@ -631,25 +607,13 @@ def runAll(sref_products, toa_products, args):
                             if(len(processes) < num_cores):
                                 break
                                     
-                        process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, args, return_list, x_val, y_val))
+                        process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, args, x_val, y_val))
                         processes.append(process)
                         process.start()
 
     # Keep running until all processes have finished
     for p in processes:
         p.join()
-
-    # Pandas doesn't recognise Manager lists, so we need to convert it back to an ordinary list
-    rows = return_list[0:len(return_list)]
-
-    to_df = pd.DataFrame(rows).set_index(['y', 'x'])
-    
-    dataset = xr.Dataset.from_dataframe(to_df)
-
-    dataset.attrs['crs'] = 'PROJCS["WGS 84 / UTM zone 55N",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Transverse_Mercator"],PARAMETER["latitude_of_origin",0],PARAMETER["central_meridian",147],PARAMETER["scale_factor",0.9996],PARAMETER["false_easting",500000],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","32655"]]'
-
-    change_img = args.outdir + "change_map.nc"
-    dataset.to_netcdf(change_img, encoding={'num_changes': {'dtype': 'uint16', '_FillValue': 9999}})
     
 def main(args):
     

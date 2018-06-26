@@ -37,12 +37,13 @@ def setupModels(all_band_data, num_bands, init_obs):
     """Creates a model for each band and stores it in model_list"""
     
     # Create a model for each band and store it in model_list
-    for i in range(num_bands):
+    for index, col in enumerate(all_band_data.columns[1:]):
         
-        band_data = pd.DataFrame({'datetime': all_band_data['datetime'], 'reflectance': all_band_data.iloc[:,i+1]})
-        ccdc_model = MakeCCDCModel(band_data)
+        band_data = pd.DataFrame({'datetime': all_band_data['datetime'], 'reflectance': all_band_data[col]})
+        ccdc_model = MakeCCDCModel(band_data, col)
+            
         ccdc_model.fitModel(init_obs)
-        model_list[i] = ccdc_model
+        model_list[index] = ccdc_model
 
 def getNumYears(date_list):
 
@@ -107,16 +108,16 @@ def initModel(pixel_data, num_bands, init_obs):
   
         # Check for change during the initialization period. We need 12 observations with no change
         for band_model in model_list: # For each model
-
-            slope_val = np.absolute(band_model.getCoefficients()["rescaled"]) / (3 * band_model.getRMSE() / total_time)
+            
+            slope_val = np.absolute(band_model.getCoefficients()[0]) / (3 * band_model.getRMSE() / total_time)
             total_slope_eval += slope_val
         
-            start_val = np.absolute((band_model.getBandData()['reflectance'].iloc[0] - band_model.getBandData()['predicted'].iloc[0])) / (3 * band_model.getRMSE())
+            start_val = np.absolute(band_model.getReflectance().iloc[0] - band_model.getPredicted().iloc[0]) / (3 * band_model.getRMSE())
             total_start_eval += start_val
             
-            end_val = np.absolute((band_model.getBandData()['reflectance'].iloc[num_data_points-1] - band_model.getBandData()['predicted'].iloc[num_data_points-1])) / (3 * band_model.getRMSE())
+            end_val = np.absolute(band_model.getReflectance().iloc[num_data_points-1] - band_model.getPredicted().iloc[num_data_points-1]) / (3 * band_model.getRMSE())
             total_end_eval += end_val
-        
+ 
         if((total_slope_eval / num_bands) > 1 or (total_start_eval / num_bands) > 1 or (total_end_eval / num_bands) > 1):
             num_iters += 1
             curr_obs_list = pixel_data.iloc[0+num_iters:init_obs+num_iters,:] # Shift along 1 row
@@ -149,11 +150,11 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
         new_obs = pixel_data.iloc[next_obs]
         new_date = new_obs[0]
         
-        for model_num, band_model in enumerate(model_list):    # For each band
-            new_ref_obs = new_obs[model_num+1]
-            residual_val = np.absolute((new_ref_obs - band_model.getPrediction(new_date)[0])) / (2 * band_model.getRMSE())
+        for band_model in model_list:    # For each band
+            new_ref_obs = new_obs[band_model.getBandName()]
+            residual_val = np.absolute(new_ref_obs - band_model.getPrediction(new_date)[0]) / (2 * band_model.getRMSE())
             change_eval += residual_val
-
+            
         if((change_eval / num_bands) <= 1):
             #print("Adding new data point")
             model_data = model_data.append(new_obs, ignore_index=True)
@@ -239,7 +240,7 @@ def runCCDC(sref_data, toa_data, change_file, args, x_val=None, y_val=None):
                   with open(change_file, 'w') as output_file:
                      writer = csv.writer(output_file)
                      writer.writerow(['start_change', 'end_change'])
-
+                     
             # We need at least 12 clear observations (6 + 6 to detect change)
             while(len(ts_data) >= 12):
                 if(getNumYears(ts_data['datetime']) > 0):
@@ -506,7 +507,7 @@ def runOnPixel(sref_products, toa_products, key, args):
 
         if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
 
-            change_file = args.outdir + str(float(sref.x)) + "_" + str(float(sref.y))
+            change_file = args.outdir + str(float(sref.x)) + "_" + str(float(sref.y)) + "_scikit"
             runCCDC(sref_data, toa_data, change_file, args)
 
 def runAll(sref_products, toa_products, args):
@@ -614,7 +615,7 @@ def runAll(sref_products, toa_products, args):
     # Keep running until all processes have finished
     for p in processes:
         p.join()
-    
+  
 def main(args):
     
     """Program runs from here"""

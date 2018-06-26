@@ -3,13 +3,14 @@ from sklearn import linear_model
 
 class MakeCCDCModel(object):
 
-    def __init__(self, band_data):
+    def __init__(self, band_data, band):
         
         self.T = 365.25
         self.pi_val_simple = (2 * np.pi) / self.T
         self.pi_val_advanced = (4 * np.pi) / self.T
         self.pi_val_full = (6 * np.pi) / self.T
         self.band_data = band_data
+        self.band = band
         
         self.lasso_model = None
         self.RMSE = None
@@ -25,17 +26,17 @@ class MakeCCDCModel(object):
                       np.cos(self.pi_val_simple * rescaled),
                       np.sin(self.pi_val_simple * rescaled)])
 
-        if(model_num >= 18):
+        if(model_num >= 24):
             x = np.vstack((x, np.array([np.cos(self.pi_val_advanced * rescaled),
                       np.sin(self.pi_val_advanced * rescaled)])))
     
-        if(model_num >= 24):
+        if(model_num >= 30):
             x = np.vstack((x, np.array([np.cos(self.pi_val_full * rescaled),
                       np.sin(self.pi_val_full * rescaled)])))
     
         x = x.T
 
-        clf = linear_model.Lasso(fit_intercept=True, alpha=10, max_iter=50) # Max_iters needs to match statsmodels
+        clf = linear_model.Lasso(fit_intercept=True, alpha=0.001, max_iter=50) # Max_iters needs to match statsmodels
 
         self.lasso_model = clf.fit(x, self.band_data.reflectance.values.reshape(-1,1))
               
@@ -55,7 +56,7 @@ class MakeCCDCModel(object):
         x = np.array([[date_to_predict],
                       [np.cos(self.pi_val_simple * date_to_predict)],
                       [np.sin(self.pi_val_simple * date_to_predict)]])
-    
+
         if(self.getNumCoeffs() >= 5):
             x = np.vstack((x, np.array([[np.cos(self.pi_val_advanced * date_to_predict)],
                       [np.sin(self.pi_val_advanced * date_to_predict)]])))
@@ -83,15 +84,15 @@ class MakeCCDCModel(object):
         
     def getReflectance(self):
 
-        return self.band_data.reflectance.values
+        return self.band_data.reflectance
 
     def getPredicted(self):
 
-        return self.band_data.predicted.values
+        return self.band_data.predicted
     
     def getTimes(self):
 
-        return self.band_data.time.values
+        return self.band_data.datetime
 
     def getNumCoeffs(self):
 		
@@ -101,7 +102,9 @@ class MakeCCDCModel(object):
         
         return self.band_data
 
-
+    def getBandName(self):
+		
+        return self.band
 
 
 

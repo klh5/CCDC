@@ -156,7 +156,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
 
         if((change_eval / num_bands) <= 1):
             #print("Adding new data point")
-            model_data.append(new_obs, ignore_index=True)
+            model_data = model_data.append(new_obs, ignore_index=True)
             setupModels(model_data, num_bands, init_obs)
             change_flag = 0 # Reset change flag because we have an inlier
 

@@ -26,13 +26,13 @@ class MakeCCDCModel(object):
         if(model_num == 6 or model_num == 12):
             lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * rescaled) + np.sin(self.pi_val_simple * rescaled) + rescaled', self.band_data)
         
-        elif(model_num == 18):
+        elif(model_num == 24):
             lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * rescaled) + np.sin(self.pi_val_simple * rescaled) + np.cos(self.pi_val_advanced * rescaled) + np.sin(self.pi_val_advanced * rescaled) + rescaled', self.band_data)
         
-        elif(model_num == 24):
+        elif(model_num == 30):
             lasso_model = smf.ols('reflectance ~ np.cos(self.pi_val_simple * rescaled) + np.sin(self.pi_val_simple * rescaled) + np.cos(self.pi_val_advanced * rescaled) + np.sin(self.pi_val_advanced * rescaled) + np.cos(self.pi_val_full * rescaled) + np.sin(self.pi_val_full * rescaled) + rescaled', self.band_data)
         
-        self.lasso_model = lasso_model.fit_regularized(alpha=10, L1_wt = 1.0, maxiter=50) # 50 is default for statsmodels
+        self.lasso_model = lasso_model.fit_regularized(alpha=0.001, L1_wt = 1.0, maxiter=50) # 50 is default for statsmodels
         self.band_data['predicted'] = self.lasso_model.predict()
     
         self.RMSE = np.sqrt(np.mean((self.band_data['reflectance'] - self.band_data['predicted']) ** 2))

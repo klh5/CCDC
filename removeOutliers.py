@@ -45,31 +45,21 @@ class RLMRemoveOutliers(object):
     def getOutlierList(self, band_data):
         
         """Goes through each observation and makes a list of outliers"""
-        
+
         outliers = []
         
-        band_data['green_pred'] = self.green_model.predict()
-        band_data['nir_pred'] = self.nir_model.predict()
-        band_data['swir1_pred'] = self.swir1_model.predict()
+        band_data['b2_delta'] = band_data.green - self.green_model.predict()
+        band_data['b4_delta'] = band_data.nir - self.nir_model.predict()
+        band_data['b5_delta'] = band_data.swir1 - self.swir1_model.predict()
     
         for index, row in band_data.iterrows():
-
-            # Get B2 delta
-            b2_delta = row['green'] - row['green_pred']
-    
-            if(b2_delta > 40):
+            
+            if(row.b2_delta > 40.0):
                 outliers.append(index)
-
+            
             else:
-                # Get B4 delta
-                b4_delta = row['nir'] - row['nir_pred']
-   
-                if(b4_delta < -40):
-                    # Get B5 delta
-                    b5_delta = row['swir1'] - row['swir1_pred']
-
-                    if(b5_delta < -40):
-                        outliers.append(index)
+                if(row.b4_delta < -40.0 and row.b5_delta < -40.0):
+                    outliers.append(index)
 
         return outliers
 

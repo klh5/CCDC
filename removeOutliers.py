@@ -21,11 +21,14 @@ class RLMRemoveOutliers(object):
         
         """Extracts the Band 2, band 4, and Band 5 data, which are used to build RLMs for detecting cloud and snow outliers"""
         self.pi_val_change = (2 * np.pi) / (num_years * self.T)
+        start_date = pixel_data.datetime.min()
+        
+        pixel_data['rescaled'] = pixel_data.datetime - start_date
 
         # Get coefficients for the three models
-        self.green_model = self.makeRLMModel(pixel_data[['datetime', 'green']])
-        self.nir_model = self.makeRLMModel(pixel_data[['datetime', 'nir']])
-        self.swir1_model = self.makeRLMModel(pixel_data[['datetime', 'swir1']])
+        self.green_model = self.makeRLMModel(pixel_data[['rescaled', 'green']])
+        self.nir_model = self.makeRLMModel(pixel_data[['rescaled', 'nir']])
+        self.swir1_model = self.makeRLMModel(pixel_data[['rescaled', 'swir1']])
 
         outliers = self.getOutlierList(pixel_data)
     
@@ -62,7 +65,6 @@ class RLMRemoveOutliers(object):
                     outliers.append(index)
 
         return outliers
-
 
 
 

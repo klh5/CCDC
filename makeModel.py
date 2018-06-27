@@ -36,14 +36,14 @@ class MakeCCDCModel(object):
     
         x = x.T
 
-        clf = linear_model.Lasso(fit_intercept=True, alpha=0.001, max_iter=50) # Max_iters needs to match statsmodels
+        clf = linear_model.Lasso(fit_intercept=True, alpha=10, max_iter=50)
 
-        self.lasso_model = clf.fit(x, self.band_data.reflectance.values.reshape(-1,1))
-              
+        self.lasso_model = clf.fit(x, self.band_data.reflectance)
+        
         self.band_data['predicted'] = self.lasso_model.predict(x)
     
         self.RMSE = np.sqrt(np.mean((self.band_data.reflectance - self.band_data.predicted) ** 2))
-        
+
         self.coefficients = self.lasso_model.coef_ 
 
     def getPrediction(self, date_to_predict):

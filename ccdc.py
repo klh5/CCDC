@@ -213,8 +213,9 @@ def runCCDC(sref_data, toa_data, change_file, args, x_val=None, y_val=None):
             
             # Screen for outliers
             robust_outliers = RLMRemoveOutliers()
+            
             outlier_list = robust_outliers.findOutliers(toa_data, num_years)
-
+            
             ts_data = sref_data.drop(outlier_list)
             ts_data.reset_index(drop=True, inplace=True)
 
@@ -234,6 +235,7 @@ def runCCDC(sref_data, toa_data, change_file, args, x_val=None, y_val=None):
                     plt_list[i].set_ylabel(band_col)
                     myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
                     plt_list[i].xaxis.set_major_formatter(myFmt)
+                    plt_list[i].set_ylim(bottom=0, top=500)
 
             else:
                   change_file = change_file + ".csv"

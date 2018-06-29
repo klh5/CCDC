@@ -16,15 +16,16 @@ from removeOutliers import RLMRemoveOutliers
 from datetime import datetime
 from osgeo import ogr
 from random import uniform
+from scipy.interpolate import interp1d
 
 # Set up list of models
 model_list = [None for i in range(5)]     # List of models, one for each band
 plt_list = []                             # List of plots, one for each band
 
-def addChangeMarker(num_bands, start_change, end_change, obs_data, plot_data):
+def addChangeMarker(num_bands, start_change, end_change, obs_data):
 
     """ Adds vertical lines to each plot every time change is detected """
-   
+       
     for i in range(num_bands):
         y_min = np.amin(obs_data.iloc[:,i+1])
         y_max = np.amax(obs_data.iloc[:,i+1])
@@ -32,6 +33,11 @@ def addChangeMarker(num_bands, start_change, end_change, obs_data, plot_data):
         plt_list[i].plot([start_change, start_change], [y_min, y_max], 'r', linewidth=1, label="Start change")
         plt_list[i].plot([end_change, end_change], [y_min, y_max], 'y', linewidth=1, label="End change")
 
+        interp = interp1d(model_list[i].getDateTimes(), model_list[i].getPredicted(), kind='cubic')
+        xnew = np.linspace(model_list[i].getDateTimes().min(), model_list[i].getDateTimes().max(), 500)
+        
+        plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=1, label="Fitted model")
+        
 def setupModels(all_band_data, num_bands, init_obs):
     
     """Creates a model for each band and stores it in model_list"""
@@ -171,7 +177,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             #print("Change detected!")
             
             if(args.outtype == 'plot'):
-                addChangeMarker(num_bands, change_start_time, new_date, pixel_data, model_data)
+                addChangeMarker(num_bands, change_start_time, new_date, pixel_data)
 
             else:
                with open(change_file, 'a') as output_file:
@@ -209,7 +215,7 @@ def runCCDC(sref_data, toa_data, change_file, args, x_val=None, y_val=None):
         num_years = getNumYears(sref_data['datetime'])
         
         # The algorithm needs at least 1 year of data
-        if(getNumYears(sref_data['datetime']) > 0):
+        if(getNumYears(sref_data['datetime']) > 0 and len(sref_data) >= 12):
             
             # Screen for outliers
             robust_outliers = RLMRemoveOutliers()
@@ -225,12 +231,12 @@ def runCCDC(sref_data, toa_data, change_file, args, x_val=None, y_val=None):
             if(args.outtype == 'plot'):
 
                 fig = plt.figure(figsize=(20, 10))
-
+                
                 # Set up plots with original data and screened data
                 for i in range(num_bands):
                     plt_list.append(fig.add_subplot(num_bands, 1, i+1))
                     band_col = ts_data.columns[i+1]
-                    plt_list[i].plot(sref_data['datetime'], sref_data.iloc[:,i+1], 'o', color='b', label='Original data', markersize=3)
+                    plt_list[i].plot(sref_data['datetime'], sref_data.iloc[:,i+1], 'o', color='c', label='Original data', markersize=3)
                     plt_list[i].plot(ts_data['datetime'], ts_data.iloc[:,i+1], 'o', color='k', label='Data after RIRLS', markersize=3)
                     plt_list[i].set_ylabel(band_col)
                     myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
@@ -277,10 +283,14 @@ def runCCDC(sref_data, toa_data, change_file, args, x_val=None, y_val=None):
 
             if(args.outtype == 'plot'):
 
-                # Once there is no more data to process, plot the results
-                plt.legend(['Original data', 'Data after RIRLS', 'Start change', 'End change'])
+                for i in range(num_bands):
+                    interp = interp1d(model_list[i].getDateTimes(), model_list[i].getPredicted(), kind='cubic')
+                    xnew = np.linspace(model_list[i].getDateTimes().min(), model_list[i].getDateTimes().max(), 500)
+                    plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=1, label="Fitted model") # Plot fitted model
+
+                plt.legend(['Original data', 'Data after RIRLS', 'Start change', 'End change', 'Fitted model'])
                 plt.tight_layout()
-                change_file = change_file + ".pdf"
+                change_file = change_file + ".png"
                 plt.savefig(change_file)
                 plt.close(fig)
                                  
@@ -655,7 +665,7 @@ def main(args):
 
     elif(len(args.key) > 1 and args.pixel_x is not None and args.pixel_y is not None):
 
-        if(args.mode == "by_pixel"):
+        if(args.mode == "pixel"):
             key = tuple(args.key)
             runOnPixel(sref_products, toa_products, key, args)
 
@@ -678,13 +688,14 @@ if __name__ == "__main__":
     parser.add_argument('-ulat', '--upperlat', type=float, default=None, help="The upper latitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
     parser.add_argument('-llon', '--lowerlon', type=float, default=None, help="The lower longitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
     parser.add_argument('-ulon', '--upperlon', type=float, default=None, help="The upper longitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
-    parser.add_argument('-k', '--key', type=int, nargs='*', default=[], help="The key for the cell to be processed. Must be a tuple of two integers, e.g. 6, -27. Required if using by_pixel argument.")
+    parser.add_argument('-k', '--key', type=int, nargs='*', default=[], help="The key for the cell to be processed. Must be entered as two separate integers, e.g. 6 -27. Required if using pixel mode.")
     parser.add_argument('-x', '--pixel_x', type=int, default=None, help="The x value of the pixel to be processed within the specified tile. Required if using by_pixel argument.")
     parser.add_argument('-y', '--pixel_y', type=int, default=None, help="The y value of the pixel to be processed within the specified tile. Required if using by_pixel argument.")
     parser.add_argument('-p', '--platform', choices=['ls5', 'ls7', 'ls8'], nargs='+', default=['ls5', 'ls7', 'ls8'], help="The platforms to be included.")
-    parser.add_argument('-m', '--mode', choices=['whole_area','subsample', 'by_pixel', 'all'], default='subsample', help="Whether the algorithm should be run on a whole (specified) area, a subsample of a (specified) area, a specific pixel, or all available data.")
+    parser.add_argument('-m', '--mode', choices=['whole_area','subsample', 'pixel', 'all'], default='subsample', help="Whether the algorithm should be run on a whole (specified) area, a subsample of a (specified) area, a specific pixel, or all available data.")
     parser.add_argument('-num', '--num_points', type=int, default=100, help="Specifies the number of subsamples to take if a random subsample is being processed.")
     parser.add_argument('-ot', '--outtype', choices=['plot', 'csv'], default='csv', help="Specifies the format of the output data. Either a plot or a CSV file will be produced for each pixel.")
+    parser.add_argument('-i', '--instrument', choices=['TM', 'ETM', 'OLI-TIRS', 'MODIS'], nargs='+', default=['TM'], help="The instruments to be included.")
     args = parser.parse_args()
     
     main(args)

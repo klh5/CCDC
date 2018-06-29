@@ -632,33 +632,17 @@ def main(args):
     
     """Program runs from here"""
 
-    sref_products = []
-    toa_products = []
-
     if(not os.path.isdir(args.outdir)):
        print("Output directory does not exist.")
        sys.exit()
-        
-    # Products are always added to both lists in the same order
-    if('ls5' in args.platform):
-        sref_products.append('ls5_arcsi_sref_ingested')
-        toa_products.append('ls5_arcsi_toa_ingested')
-
-    if('ls7' in args.platform):
-        sref_products.append('ls7_arcsi_sref_ingested')
-        toa_products.append('ls7_arcsi_toa_ingested')
-
-    if('ls8' in args.platform):
-        sref_products.append('ls8_arcsi_sref_ingested')
-        toa_products.append('ls8_arcsi_toa_ingested')
 
     if(args.lowerlat is not None and args.upperlat is not None and args.lowerlon is not None and args.upperlon is not None):
 
         if(args.mode == "subsample"):
-            runOnSubset(sref_products, toa_products, args)
+            runOnSubset(args.sref_products, args.toa_products, args)
 
         elif(args.mode == "whole_area"):
-            runOnArea(sref_products, toa_products, args)
+            runOnArea(args.sref_products, args.toa_products, args)
 
         else:
             print("Lat/long boundaries were provided, but mode was not subsample or whole_area.")
@@ -667,18 +651,17 @@ def main(args):
 
         if(args.mode == "pixel"):
             key = tuple(args.key)
-            runOnPixel(sref_products, toa_products, key, args)
+            runOnPixel(args.sref_products, args.toa_products, key, args)
 
         else:
-            print("Key/pixel details were provided, but mode was not by_pixel.")
+            print("Key/pixel details were provided, but mode was not single pixel.")
 
     elif(args.mode == "all"):
-        runAll(sref_products, toa_products, args)
+        runAll(args.sref_products, args.toa_products, args)
 
     else:
         print("Please provide either lat/long boundaries or pixel coordinates and cell key, or set mode to 'all'.")
         
-
 
 if __name__ == "__main__":
    
@@ -691,11 +674,11 @@ if __name__ == "__main__":
     parser.add_argument('-k', '--key', type=int, nargs='*', default=[], help="The key for the cell to be processed. Must be entered as two separate integers, e.g. 6 -27. Required if using pixel mode.")
     parser.add_argument('-x', '--pixel_x', type=int, default=None, help="The x value of the pixel to be processed within the specified tile. Required if using by_pixel argument.")
     parser.add_argument('-y', '--pixel_y', type=int, default=None, help="The y value of the pixel to be processed within the specified tile. Required if using by_pixel argument.")
-    parser.add_argument('-p', '--platform', choices=['ls5', 'ls7', 'ls8'], nargs='+', default=['ls5', 'ls7', 'ls8'], help="The platforms to be included.")
     parser.add_argument('-m', '--mode', choices=['whole_area','subsample', 'pixel', 'all'], default='subsample', help="Whether the algorithm should be run on a whole (specified) area, a subsample of a (specified) area, a specific pixel, or all available data.")
     parser.add_argument('-num', '--num_points', type=int, default=100, help="Specifies the number of subsamples to take if a random subsample is being processed.")
     parser.add_argument('-ot', '--outtype', choices=['plot', 'csv'], default='csv', help="Specifies the format of the output data. Either a plot or a CSV file will be produced for each pixel.")
-    parser.add_argument('-i', '--instrument', choices=['TM', 'ETM', 'OLI-TIRS', 'MODIS'], nargs='+', default=['TM'], help="The instruments to be included.")
+    parser.add_argument('-sp', '--sref_products', nargs='+', required=True, help="The surface reflectance product(s) to use.")
+    parser.add_argument('-tp', '--toa_products', nargs='+', required=True, help="The top-of-atmosphere reflectance product(s) to use.")
     args = parser.parse_args()
     
     main(args)

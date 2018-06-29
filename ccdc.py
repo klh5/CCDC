@@ -30,13 +30,13 @@ def addChangeMarker(num_bands, start_change, end_change, obs_data):
         y_min = np.amin(obs_data.iloc[:,i+1])
         y_max = np.amax(obs_data.iloc[:,i+1])
 
-        plt_list[i].plot([start_change, start_change], [y_min, y_max], 'r', linewidth=1, label="Start change")
-        plt_list[i].plot([end_change, end_change], [y_min, y_max], 'y', linewidth=1, label="End change")
+        plt_list[i].plot([start_change, start_change], [y_min, y_max], 'r', linewidth=1)
+        plt_list[i].plot([end_change, end_change], [y_min, y_max], 'y', linewidth=1)
 
         interp = interp1d(model_list[i].getDateTimes(), model_list[i].getPredicted(), kind='cubic')
         xnew = np.linspace(model_list[i].getDateTimes().min(), model_list[i].getDateTimes().max(), 500)
         
-        plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=1, label="Fitted model")
+        plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=1)
         
 def setupModels(all_band_data, num_bands, init_obs):
     
@@ -286,9 +286,14 @@ def runCCDC(sref_data, toa_data, change_file, args, x_val=None, y_val=None):
                 for i in range(num_bands):
                     interp = interp1d(model_list[i].getDateTimes(), model_list[i].getPredicted(), kind='cubic')
                     xnew = np.linspace(model_list[i].getDateTimes().min(), model_list[i].getDateTimes().max(), 500)
-                    plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=1, label="Fitted model") # Plot fitted model
+                    plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=1) # Plot fitted model
 
-                plt.legend(['Original data', 'Data after RIRLS', 'Start change', 'End change', 'Fitted model'])
+                # Plot empty datasets so start/end of change is included in legend
+                plt.plot([], [], 'r', label='Start change')
+                plt.plot([], [], 'y', label='End change')
+                plt.plot([], [], 'm', label='Fitted model')
+                
+                plt.legend()
                 plt.tight_layout()
                 change_file = change_file + ".png"
                 plt.savefig(change_file)

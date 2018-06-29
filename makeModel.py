@@ -36,7 +36,7 @@ class MakeCCDCModel(object):
     
         x = x.T
 
-        clf = linear_model.Lasso(fit_intercept=True, alpha=10, max_iter=50)
+        clf = linear_model.Lasso(fit_intercept=True, alpha=0.001, max_iter=50)
 
         self.lasso_model = clf.fit(x, self.band_data.reflectance)
         
@@ -90,7 +90,7 @@ class MakeCCDCModel(object):
 
         return self.band_data.predicted
     
-    def getTimes(self):
+    def getDateTimes(self):
 
         return self.band_data.datetime
 

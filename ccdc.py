@@ -373,8 +373,8 @@ def runOnSubset(sref_products, toa_products, args):
                     sref = mask_invalid_data(sref)
                     toa = mask_invalid_data(toa)
                 
-                    sref_data = transformToDf(sref)
-                    toa_data = transformToDf(toa)
+                    sref_data = transformToArray(sref)
+                    toa_data = transformToArray(toa)
 
                     if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
                         
@@ -429,8 +429,8 @@ def runOnArea(sref_products, toa_products, args):
                 sref_ts = sref.isel(x=i, y=j)
                 toa_ts = toa.isel(x=i, y=j)
        
-                sref_data = transformToDf(sref_ts)
-                toa_data = transformToDf(toa_ts)
+                sref_data = transformToArray(sref_ts)
+                toa_data = transformToArray(toa_ts)
     
                 if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
                     
@@ -602,8 +602,8 @@ def runAll(sref_products, toa_products, args):
                     sref_ts = sref.isel(x=i, y=j)
                     toa_ts = toa.isel(x=i, y=j)
        
-                    sref_data = transformToDf(sref_ts)
-                    toa_data = transformToDf(toa_ts)
+                    sref_data = transformToArray(sref_ts)
+                    toa_data = transformToArray(toa_ts)
     
                     if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
 

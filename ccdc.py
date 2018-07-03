@@ -27,8 +27,8 @@ def addChangeMarker(num_bands, start_change, end_change, obs_data):
     """ Adds vertical lines to each plot every time change is detected """
        
     for i in range(num_bands):
-        y_min = np.amin(obs_data.iloc[:,i+1])
-        y_max = np.amax(obs_data.iloc[:,i+1])
+        y_min = np.amin(obs_data[:,i+1])
+        y_max = np.amax(obs_data[:,i+1])
 
         plt_list[i].plot([start_change, start_change], [y_min, y_max], 'r', linewidth=1)
         plt_list[i].plot([end_change, end_change], [y_min, y_max], 'y', linewidth=1)
@@ -42,49 +42,48 @@ def setupModels(all_band_data, num_bands, init_obs):
     
     """Creates a model for each band and stores it in model_list"""
     
+    # Get column of datetime values
+    datetimes = all_band_data[:,0]
+    
     # Create a model for each band and store it in model_list
-    for index, col in enumerate(all_band_data.columns[1:]):
+    for i in range(1, all_band_data.shape[1]):
         
-        band_data = pd.DataFrame({'datetime': all_band_data['datetime'], 'reflectance': all_band_data[col]})
-        ccdc_model = MakeCCDCModel(band_data, col)
+        band_data = all_band_data[:,i]
+   
+        ccdc_model = MakeCCDCModel(datetimes, band_data)
             
         ccdc_model.fitModel(init_obs)
-        model_list[index] = ccdc_model
+        
+        model_list[i-1] = ccdc_model
 
 def getNumYears(date_list):
 
     """Get number of years (from Python/Rata Die date)"""
     
-    last_date = datetime.fromordinal(np.amax(date_list)).strftime('%Y')
-    first_date = datetime.fromordinal(np.amin(date_list)).strftime('%Y')
+    last_date = datetime.fromordinal(np.amax(date_list).astype(int)).strftime('%Y')
+    first_date = datetime.fromordinal(np.amin(date_list).astype(int)).strftime('%Y')
         
     num_years = int(last_date) - int(first_date)
 
     return num_years
 
-def transformToDf(dataset_to_transform):
+def transformToArray(dataset_to_transform):
 
-    """Transforms xarray Dataset object into a Pandas dataframe"""
+    """Transforms xarray Dataset object into a Numpy array"""
+    
+    ds_to_array = np.array([pd.Timestamp(x).toordinal() for x in dataset_to_transform.time.data]).reshape(-1, 1)
+    
+    for var in dataset_to_transform.data_vars:
+        ds_to_array = np.hstack((ds_to_array, dataset_to_transform[var].values.reshape(-1, 1)))
 
-    new_df = pd.DataFrame()
-        
-    new_df['datetime'] = dataset_to_transform.time.data
-    new_df['datetime'] = new_df['datetime'].apply(lambda x: x.toordinal())
-
-    for name, var in dataset_to_transform.data_vars.items():
-        new_df[name] = np.reshape(var.data, -1)
-            
-    # Points at the edge of the image could return empty arrays (all 0's) - this will remove any columns to which this applies
-    new_df = new_df.dropna(axis=1, how='all')
-
-    return new_df
+    return ds_to_array
 
 def initModel(pixel_data, num_bands, init_obs):
 
     """Finds a sequence of 6/12/18/24 consecutive clear observations without any change, to initialize the model"""
 
     # Subset first n clear observations for model initialisation
-    curr_obs_list = pixel_data.iloc[0:init_obs,:]
+    curr_obs_list = pixel_data[:init_obs,]
     
     # Start off with the model uninitialized
     model_init = False
@@ -106,7 +105,7 @@ def initModel(pixel_data, num_bands, init_obs):
         setupModels(curr_obs_list, num_bands, init_obs)
 
         # Get total time used for model initialization
-        total_time = np.max(curr_obs_list['datetime']) - np.min(curr_obs_list['datetime'])
+        total_time = np.max(curr_obs_list[:,0]) - np.min(curr_obs_list[:,0])
         
         total_slope_eval = 0
         total_start_eval = 0
@@ -118,15 +117,15 @@ def initModel(pixel_data, num_bands, init_obs):
             slope_val = np.absolute(band_model.getCoefficients()[0]) / (3 * band_model.getRMSE() / total_time)
             total_slope_eval += slope_val
         
-            start_val = np.absolute(band_model.getReflectance().iloc[0] - band_model.getPredicted().iloc[0]) / (3 * band_model.getRMSE())
+            start_val = np.absolute(band_model.getBandData()[0] - band_model.getPredicted()[0]) / (3 * band_model.getRMSE())
             total_start_eval += start_val
             
-            end_val = np.absolute(band_model.getReflectance().iloc[num_data_points-1] - band_model.getPredicted().iloc[num_data_points-1]) / (3 * band_model.getRMSE())
+            end_val = np.absolute(band_model.getBandData()[num_data_points-1] - band_model.getPredicted()[num_data_points-1]) / (3 * band_model.getRMSE())
             total_end_eval += end_val
  
         if((total_slope_eval / num_bands) > 1 or (total_start_eval / num_bands) > 1 or (total_end_eval / num_bands) > 1):
             num_iters += 1
-            curr_obs_list = pixel_data.iloc[0+num_iters:init_obs+num_iters,:] # Shift along 1 row
+            curr_obs_list = pixel_data[0+num_iters:init_obs+num_iters,:] # Shift along 1 row
         
         else:
             model_init = True
@@ -148,23 +147,31 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
     # Detect change
     change_flag = 0
     change_start_time = None
+    
+    num_new_obs = 0
 
     while((next_obs+1) <= len(pixel_data)):
 
         change_eval = 0
         
-        new_obs = pixel_data.iloc[next_obs]
+        new_obs = pixel_data[next_obs,]
         new_date = new_obs[0]
         
-        for band_model in model_list:    # For each band
-            new_ref_obs = new_obs[band_model.getBandName()]
-            residual_val = np.absolute(new_ref_obs - band_model.getPrediction(new_date)[0]) / (2 * band_model.getRMSE())
+        for i in range(1, num_bands+1):    # For each band
+            new_ref_obs = new_obs[i]
+            residual_val = np.absolute(new_ref_obs - model_list[i-1].getPrediction(new_date)[0]) / (2 * model_list[i-1].getRMSE())
             change_eval += residual_val
             
         if((change_eval / num_bands) <= 1):
             #print("Adding new data point")
-            model_data = model_data.append(new_obs, ignore_index=True)
-            setupModels(model_data, num_bands, init_obs)
+            model_data = np.append(model_data, [new_obs], axis=0)
+            
+            num_new_obs += 1
+            
+            if(num_new_obs == args.re_init):
+                setupModels(model_data, num_bands, init_obs)
+                num_new_obs = 0
+                
             change_flag = 0 # Reset change flag because we have an inlier
 
         else:
@@ -184,7 +191,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
                   writer = csv.writer(output_file)
                   writer.writerow([datetime.fromordinal(int(change_start_time)).strftime('%d/%m/%Y'), datetime.fromordinal(int(new_date)).strftime('%d/%m/%Y')])
                 
-            return pixel_data.iloc[next_obs:,]
+            return pixel_data[next_obs:,]
         
         # Need to get the next observation
         next_obs += 1
@@ -198,35 +205,35 @@ def runCCDC(sref_data, toa_data, change_file, args, x_val=None, y_val=None):
         left after a breakpoint to attempt to initialize a new model."""
 
     # Drop any rows which have NaN values for one or more bands (we need data for all bands to be complete)
-    sref_data.dropna(axis=0, how='any', inplace=True)
-    toa_data.dropna(axis=0, how='any', inplace=True)
-
+    sref_nan_mask = np.any(np.isnan(sref_data), axis=1)
+    sref_data = sref_data[~sref_nan_mask]
+    
+    toa_nan_mask = np.any(np.isnan(toa_data), axis=1)
+    toa_data = toa_data[~toa_nan_mask]
+    
     num_bands = 5
     num_changes = 0
 
     # Sort data by date
-    sref_data.sort_values(by=['datetime'], inplace=True)
-    toa_data.sort_values(by=['datetime'], inplace=True)
+    sref_data = sref_data[np.argsort(sref_data[:,0])]
+    toa_data = toa_data[np.argsort(toa_data[:,0])]
 
     # Very important that both datasets contain the same number of observations
-    if(sref_data.datetime.equals(toa_data.datetime)):
+    if(np.array_equal(sref_data[:,0], toa_data[:,0])):
         
         # Get the number of years covered by the dataset
-        num_years = getNumYears(sref_data['datetime'])
+        num_years = getNumYears(sref_data[:,0])
         
         # The algorithm needs at least 1 year of data
-        if(getNumYears(sref_data['datetime']) > 0 and len(sref_data) >= 12):
+        if(num_years > 0 and len(sref_data) >= 12):
             
             # Screen for outliers
-            robust_outliers = RLMRemoveOutliers()
+            robust_outliers = RLMRemoveOutliers(toa_data, sref_data)
             
-            outlier_list = robust_outliers.findOutliers(toa_data, num_years)
-            
-            ts_data = sref_data.drop(outlier_list)
-            ts_data.reset_index(drop=True, inplace=True)
-
+            ts_data = robust_outliers.cleanData(num_years)
+                       
             # Update num_years now outliers have been removed
-            num_years = getNumYears(ts_data['datetime'])
+            num_years = getNumYears(ts_data[:,0])
 
             if(args.outtype == 'plot'):
 
@@ -235,10 +242,8 @@ def runCCDC(sref_data, toa_data, change_file, args, x_val=None, y_val=None):
                 # Set up plots with original data and screened data
                 for i in range(num_bands):
                     plt_list.append(fig.add_subplot(num_bands, 1, i+1))
-                    band_col = ts_data.columns[i+1]
-                    plt_list[i].plot(sref_data['datetime'], sref_data.iloc[:,i+1], 'o', color='c', label='Original data', markersize=3)
-                    plt_list[i].plot(ts_data['datetime'], ts_data.iloc[:,i+1], 'o', color='k', label='Data after RIRLS', markersize=3)
-                    plt_list[i].set_ylabel(band_col)
+                    plt_list[i].plot(sref_data[:,0], sref_data[:,i+1], 'o', color='c', label='Original data', markersize=3)
+                    plt_list[i].plot(ts_data[:,0], ts_data[:,i+1], 'o', color='k', label='Data after RIRLS', markersize=3)
                     myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
                     plt_list[i].xaxis.set_major_formatter(myFmt)
                     plt_list[i].set_ylim(bottom=0, top=500)
@@ -251,7 +256,7 @@ def runCCDC(sref_data, toa_data, change_file, args, x_val=None, y_val=None):
                      
             # We need at least 12 clear observations (6 + 6 to detect change)
             while(len(ts_data) >= 12):
-                if(getNumYears(ts_data['datetime']) > 0):
+                if(getNumYears(ts_data[:,0]) > 0):
 
                     # Get total number of clear observations in the dataset
                     num_clear_obs = len(ts_data)
@@ -519,8 +524,8 @@ def runOnPixel(sref_products, toa_products, key, args):
         sref = mask_invalid_data(sref)
         toa = mask_invalid_data(toa)
         
-        sref_data = transformToDf(sref)
-        toa_data = transformToDf(toa)
+        sref_data = transformToArray(sref)
+        toa_data = transformToArray(toa)
 
         if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
 
@@ -531,8 +536,8 @@ def runAll(sref_products, toa_products, args):
 
     """Run on all tiles in the specified datasets. Keys are based on the most recent dataset."""
 
-    num_cores = multiprocessing.cpu_count() - 1 # Leave one core for other stuff
-    
+    #num_cores = multiprocessing.cpu_count() - 1 # Leave one core for other stuff
+    num_cores = 1
     processes = []
 
     dc = datacube.Datacube()
@@ -684,6 +689,7 @@ if __name__ == "__main__":
     parser.add_argument('-ot', '--outtype', choices=['plot', 'csv'], default='csv', help="Specifies the format of the output data. Either a plot or a CSV file will be produced for each pixel.")
     parser.add_argument('-sp', '--sref_products', nargs='+', required=True, help="The surface reflectance product(s) to use.")
     parser.add_argument('-tp', '--toa_products', nargs='+', required=True, help="The top-of-atmosphere reflectance product(s) to use.")
+    parser.add_argument('-i', '--re_init', type=int, default=3, help="The number of new observations added to a model before the model is refitted.")
     args = parser.parse_args()
     
     main(args)

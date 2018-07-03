@@ -3,24 +3,25 @@ from sklearn import linear_model
 
 class MakeCCDCModel(object):
 
-    def __init__(self, band_data, band):
+    def __init__(self, datetimes, band_data):
         
         self.T = 365.25
         self.pi_val_simple = (2 * np.pi) / self.T
         self.pi_val_advanced = (4 * np.pi) / self.T
         self.pi_val_full = (6 * np.pi) / self.T
         self.band_data = band_data
-        self.band = band
+        self.datetimes = datetimes
         
         self.lasso_model = None
         self.RMSE = None
         self.coefficients = None
-        self.start_date = self.band_data.datetime.min()
+        self.start_date = self.datetimes.min()
+        self.predicted = None
 
     def fitModel(self, model_num):
         
         """Finds the coefficients by fitting a Lasso model to the data"""
-        rescaled = self.band_data.datetime - self.start_date
+        rescaled = self.datetimes - self.start_date
         
         x = np.array([rescaled,
                       np.cos(self.pi_val_simple * rescaled),
@@ -38,11 +39,11 @@ class MakeCCDCModel(object):
 
         clf = linear_model.Lasso(fit_intercept=True, alpha=0.001, max_iter=50)
 
-        self.lasso_model = clf.fit(x, self.band_data.reflectance)
+        self.lasso_model = clf.fit(x, self.band_data)
         
-        self.band_data['predicted'] = self.lasso_model.predict(x)
+        self.predicted = self.lasso_model.predict(x)
     
-        self.RMSE = np.sqrt(np.mean((self.band_data.reflectance - self.band_data.predicted) ** 2))
+        self.RMSE = np.sqrt(np.mean((self.band_data - self.predicted) ** 2))
 
         self.coefficients = self.lasso_model.coef_ 
 
@@ -81,18 +82,14 @@ class MakeCCDCModel(object):
     
         if(self.RMSE != None):
             return self.RMSE
-        
-    def getReflectance(self):
-
-        return self.band_data.reflectance
 
     def getPredicted(self):
 
-        return self.band_data.predicted
+        return self.predicted
     
     def getDateTimes(self):
 
-        return self.band_data.datetime
+        return self.datetimes
 
     def getNumCoeffs(self):
 		
@@ -102,9 +99,6 @@ class MakeCCDCModel(object):
         
         return self.band_data
 
-    def getBandName(self):
-		
-        return self.band
 
 
 

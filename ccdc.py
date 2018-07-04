@@ -392,7 +392,7 @@ def runOnArea(sref_products, toa_products, args):
     sref_ds = []
     toa_ds = []
     
-    num_cores = multiprocessing.cpu_count() - 1 # Leave one core for other stuff
+    num_processes = args.num_procs
     
     processes = [] 
 
@@ -445,7 +445,6 @@ def runOnArea(sref_products, toa_products, args):
                         p_done = []
 
                         for index, p in enumerate(processes):
-                            p.join(timeout=0)
                                 
                             if(not p.is_alive()):
                                 p_done.append(index)
@@ -454,7 +453,7 @@ def runOnArea(sref_products, toa_products, args):
                             for index in sorted(p_done, reverse=True): # Need to delete in reverse order to preserve indexes
                                 del(processes[index])
 
-                        if(len(processes) < num_cores):
+                        if(len(processes) < num_processes):
                             break
                                     
                     process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, args, x_val, y_val))
@@ -537,7 +536,8 @@ def runAll(sref_products, toa_products, args):
     """Run on all tiles in the specified datasets. Keys are based on the most recent dataset."""
 
     #num_cores = multiprocessing.cpu_count() - 1 # Leave one core for other stuff
-    num_cores = 1
+
+    num_processes = args.num_procs
     processes = []
 
     dc = datacube.Datacube()
@@ -597,8 +597,6 @@ def runAll(sref_products, toa_products, args):
             for i in range(len(sref.x)):
                 for j in range(len(sref.y)):
 
-                    print("{}, {}".format(i, j))
-
                     sref_ts = sref.isel(x=i, y=j)
                     toa_ts = toa.isel(x=i, y=j)
        
@@ -614,22 +612,21 @@ def runAll(sref_products, toa_products, args):
 
                         # Block until a core becomes available
                         while(True):
-
+    
                             p_done = []
-
+    
                             for index, p in enumerate(processes):
-                                p.join(timeout=0)
-                                
+                                    
                                 if(not p.is_alive()):
                                     p_done.append(index)
-
+    
                             if(p_done):
                                 for index in sorted(p_done, reverse=True): # Need to delete in reverse order to preserve indexes
                                     del(processes[index])
-
-                            if(len(processes) < num_cores):
+    
+                            if(len(processes) < num_processes):
                                 break
-                                    
+                                        
                         process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, args, x_val, y_val))
                         processes.append(process)
                         process.start()
@@ -689,7 +686,9 @@ if __name__ == "__main__":
     parser.add_argument('-ot', '--outtype', choices=['plot', 'csv'], default='csv', help="Specifies the format of the output data. Either a plot or a CSV file will be produced for each pixel.")
     parser.add_argument('-sp', '--sref_products', nargs='+', required=True, help="The surface reflectance product(s) to use.")
     parser.add_argument('-tp', '--toa_products', nargs='+', required=True, help="The top-of-atmosphere reflectance product(s) to use.")
-    parser.add_argument('-i', '--re_init', type=int, default=3, help="The number of new observations added to a model before the model is refitted.")
+    parser.add_argument('-i', '--re_init', type=int, default=1, help="The number of new observations added to a model before the model is refitted.")
+    parser.add_argument('-p', '--num_procs', type=int, default=1, help="The number of processes to use.")
+
     args = parser.parse_args()
     
     main(args)

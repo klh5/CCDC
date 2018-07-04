@@ -17,14 +17,13 @@ def main():
     if(len(sys.argv) > 1):
         csv_dir = sys.argv[1]
         img_dir = sys.argv[2]
-        
-        csv_dir = "/media/hdd_1/output/"
-        img_dir = "ls8_img.kea"
 
         print("CSV file directory:", csv_dir)
         print("Image file directory:", img_dir)
         
         if(os.path.isdir(csv_dir)):
+            
+            print("Gathering change data...")
 
             rows = []
         
@@ -32,7 +31,9 @@ def main():
             for change_file in os.listdir(csv_dir):
 
                 if fnmatch.fnmatch(change_file, '*.csv'): # Check if it's a CSV file
-
+                    
+                    print("Processing file: {}".format(change_file))
+                    
                     sep_filename = change_file.replace('.', '_').split('_')
 
                     x_val = float(sep_filename[0])
@@ -55,6 +56,8 @@ def main():
         
         temp_img = "change_temp.nc"
         change_map_crs = "change_map_crs.nc"
+        
+        print("Generating output...")
 
         dataset.to_netcdf(temp_img, encoding={'num_changes': {'dtype': 'uint16', '_FillValue': 9999}})
 

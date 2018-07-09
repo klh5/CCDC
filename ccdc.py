@@ -387,7 +387,7 @@ def runOnSubset(sref_products, toa_products, args):
 def runOnArea(sref_products, toa_products, args):
 
     """If the user chooses to run the algorithm on the whole of the specified area, this function is called.
-    This function will load the whole area specified by the user, and run the algorithm on each pixel one by one."""
+    This function will load the whole area specified by the user, and run the algorithm on each pixel."""
 
     sref_ds = []
     toa_ds = []
@@ -464,13 +464,20 @@ def runOnArea(sref_products, toa_products, args):
     for p in processes:
         p.join()
 
-def runOnPixel(sref_products, toa_products, key, args):
+def runByTile(sref_products, toa_products, key, args):
 
-    """A key represent one cell/area. Each cell has a tile for each time point. The x and y values define the extent of
-   the tile that should be loaded and processed."""
-
-    x_val = args.pixel_x
-    y_val = args.pixel_y
+    """Lets you process data using cell keys and x/y extent.
+       A key represent one cell/area. Each cell has a tile for each time point. The x and y values define the extent of
+       the tile that should be loaded and processed."""
+       
+    num_processes = args.num_procs
+    processes = []
+       
+    min_x = args.tile_x_min
+    max_x = args.tile_x_max
+    
+    min_y = args.tile_y_min
+    max_y = args.tile_y_max
 
     sref_ds = []
     toa_ds = []
@@ -489,7 +496,7 @@ def runOnPixel(sref_products, toa_products, key, args):
 
         # Retrieve the specified pixel for each tile in the list
         for tile_index, tile in tile_list.items():
-            dataset = curr_gw.load(tile[0:1, x_val:x_val+1, y_val:y_val+1], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
+            dataset = curr_gw.load(tile[0:1, min_x:max_x, min_y:max_y], measurements=['red', 'green', 'nir', 'swir1', 'swir2'])
 
             if(dataset.variables):
                 sref_ds.append(dataset)
@@ -508,7 +515,7 @@ def runOnPixel(sref_products, toa_products, key, args):
 
         # Retrieve the specified pixel for each tile in the list
         for tile_index, tile in tile_list.items():
-            dataset = curr_gw.load(tile[0:1, x_val:x_val+1, y_val:y_val+1], measurements=['green', 'nir', 'swir1'])
+            dataset = curr_gw.load(tile[0:1, min_x:max_x, min_y:max_y], measurements=['green', 'nir', 'swir1'])
 
             if(dataset.variables):
                 toa_ds.append(dataset)
@@ -522,20 +529,51 @@ def runOnPixel(sref_products, toa_products, key, args):
         # Change nodata values (0's) to NaN
         sref = mask_invalid_data(sref)
         toa = mask_invalid_data(toa)
-        
-        sref_data = transformToArray(sref)
-        toa_data = transformToArray(toa)
+               
+        for i in range(len(sref.x)):
+            for j in range(len(sref.y)):
+                
+                sref_ts = sref.isel(x=i, y=j)
+                toa_ts = toa.isel(x=i, y=j)
+                
+                sref_data = transformToArray(sref_ts)
+                toa_data = transformToArray(toa_ts)
+            
+                if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
+                    
+                    x_val = float(sref_ts.x)
+                    y_val = float(sref_ts.y)
+                                    
+                    change_file = args.outdir + str(x_val) + "_" + str(y_val)
+                    
+                    # Block until a core becomes available
+                    while(True):
+    
+                        p_done = []
+    
+                        for index, p in enumerate(processes):
+                                    
+                            if(not p.is_alive()):
+                                p_done.append(index)
+    
+                        if(p_done):
+                            for index in sorted(p_done, reverse=True): # Need to delete in reverse order to preserve indexes
+                                del(processes[index])
+    
+                        if(len(processes) < num_processes):
+                            break
+                                        
+                    process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, args, x_val, y_val))
+                    processes.append(process)
+                    process.start()
 
-        if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
-
-            change_file = args.outdir + str(float(sref.x)) + "_" + str(float(sref.y)) + "_scikit"
-            runCCDC(sref_data, toa_data, change_file, args)
+    # Keep running until all processes have finished
+    for p in processes:
+        p.join()
 
 def runAll(sref_products, toa_products, args):
 
-    """Run on all tiles in the specified datasets. Keys are based on the most recent dataset."""
-
-    #num_cores = multiprocessing.cpu_count() - 1 # Leave one core for other stuff
+    """Run on all tiles in the specified datasets/area. Keys are based on the last dataset listed."""
 
     num_processes = args.num_procs
     processes = []
@@ -546,7 +584,7 @@ def runAll(sref_products, toa_products, args):
     gw = GridWorkflow(dc.index, product=sref_products[-1])
 
     # Get list of cell keys for most recent dataset
-    keys = list(gw.list_cells(product=sref_products[-1]).keys())
+    keys = list(gw.list_cells(product=sref_products[-1], lat=(args.lowerlat, args.upperlat), lon=(args.lowerlon, args.upperlon)).keys())
 
     for key in keys:
 
@@ -599,7 +637,7 @@ def runAll(sref_products, toa_products, args):
 
                     sref_ts = sref.isel(x=i, y=j)
                     toa_ts = toa.isel(x=i, y=j)
-       
+                    
                     sref_data = transformToArray(sref_ts)
                     toa_data = transformToArray(toa_ts)
     
@@ -648,23 +686,23 @@ def main(args):
         if(args.mode == "subsample"):
             runOnSubset(args.sref_products, args.toa_products, args)
 
-        elif(args.mode == "whole_area"):
+        elif(args.mode == "area"):
             runOnArea(args.sref_products, args.toa_products, args)
+            
+        elif(args.mode == "all"):
+            runAll(args.sref_products, args.toa_products, args)
 
         else:
-            print("Lat/long boundaries were provided, but mode was not subsample or whole_area.")
+            print("Lat/long boundaries were provided, but mode was not subsample, area, or all.")
 
-    elif(len(args.key) > 1 and args.pixel_x is not None and args.pixel_y is not None):
+    elif(len(args.key) > 1 and args.tile_x_min is not None and args.tile_x_max is not None and args.tile_y_min is not None and args.tile_y_max is not None):
 
-        if(args.mode == "pixel"):
+        if(args.mode == "tile"):
             key = tuple(args.key)
-            runOnPixel(args.sref_products, args.toa_products, key, args)
+            runByTile(args.sref_products, args.toa_products, key, args)
 
         else:
             print("Key/pixel details were provided, but mode was not single pixel.")
-
-    elif(args.mode == "all"):
-        runAll(args.sref_products, args.toa_products, args)
 
     else:
         print("Please provide either lat/long boundaries or pixel coordinates and cell key, or set mode to 'all'.")
@@ -674,14 +712,16 @@ if __name__ == "__main__":
    
     parser = argparse.ArgumentParser(description="Run CCDC algorithm using Data Cube.", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-d', '--outdir', default="./", help="The output directory for any produced csv files/images/plots.")
-    parser.add_argument('-llat', '--lowerlat', type=float, default=None, help="The lower latitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
-    parser.add_argument('-ulat', '--upperlat', type=float, default=None, help="The upper latitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
-    parser.add_argument('-llon', '--lowerlon', type=float, default=None, help="The lower longitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
-    parser.add_argument('-ulon', '--upperlon', type=float, default=None, help="The upper longitude boundary of the area to be processed. Required if using whole_area or subsample arguments.")
-    parser.add_argument('-k', '--key', type=int, nargs='*', default=[], help="The key for the cell to be processed. Must be entered as two separate integers, e.g. 6 -27. Required if using pixel mode.")
-    parser.add_argument('-x', '--pixel_x', type=int, default=None, help="The x value of the pixel to be processed within the specified tile. Required if using by_pixel argument.")
-    parser.add_argument('-y', '--pixel_y', type=int, default=None, help="The y value of the pixel to be processed within the specified tile. Required if using by_pixel argument.")
-    parser.add_argument('-m', '--mode', choices=['whole_area','subsample', 'pixel', 'all'], default='subsample', help="Whether the algorithm should be run on a whole (specified) area, a subsample of a (specified) area, a specific pixel, or all available data.")
+    parser.add_argument('-llat', '--lowerlat', type=float, default=None, help="The lower latitude boundary of the area to be processed. Required if using area or subsample modes.")
+    parser.add_argument('-ulat', '--upperlat', type=float, default=None, help="The upper latitude boundary of the area to be processed. Required if using area or subsample modes.")
+    parser.add_argument('-llon', '--lowerlon', type=float, default=None, help="The lower longitude boundary of the area to be processed. Required if using area or subsample modes.")
+    parser.add_argument('-ulon', '--upperlon', type=float, default=None, help="The upper longitude boundary of the area to be processed. Required if using area or subsample modes.")
+    parser.add_argument('-k', '--key', type=int, nargs='*', default=[], help="The key for the cell to be processed. Must be entered as two separate integers, e.g. 6 -27. Required if using tile mode.")
+    parser.add_argument('-t_xmin', '--tile_x_min', type=int, default=None, help="The minimum/starting x value of the area of the tile you want to process. Required if using tile mode.")
+    parser.add_argument('-t_xmax', '--tile_x_max', type=int, default=None, help="The maximum/ending x value of the area of the tile you want to process. Required if using tile mode.")
+    parser.add_argument('-t_ymin', '--tile_y_min', type=int, default=None, help="The minimum/starting y value of the area of the tile you want to process. Required if using tile mode.")
+    parser.add_argument('-t_ymax', '--tile_y_max', type=int, default=None, help="The maximum/ending y value of the area of the tile you want to process. Required if using tile mode.")
+    parser.add_argument('-m', '--mode', choices=['area','subsample', 'tile', 'all'], default='all', help="Whether the algorithm should be run on a specified area, a subsample of a (specified) area, a specific tile, or all available data.")
     parser.add_argument('-num', '--num_points', type=int, default=100, help="Specifies the number of subsamples to take if a random subsample is being processed.")
     parser.add_argument('-ot', '--outtype', choices=['plot', 'csv'], default='csv', help="Specifies the format of the output data. Either a plot or a CSV file will be produced for each pixel.")
     parser.add_argument('-sp', '--sref_products', nargs='+', required=True, help="The surface reflectance product(s) to use.")

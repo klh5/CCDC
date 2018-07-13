@@ -17,6 +17,7 @@ from datetime import datetime
 from osgeo import ogr
 from random import uniform
 from scipy.interpolate import interp1d
+from sklearn.externals import joblib
 
 # Set up list of models
 model_list = [None for i in range(5)]     # List of models, one for each band
@@ -30,13 +31,13 @@ def addChangeMarker(num_bands, start_change, end_change, obs_data):
         y_min = np.amin(obs_data[:,i+1])
         y_max = np.amax(obs_data[:,i+1])
 
-        plt_list[i].plot([start_change, start_change], [y_min, y_max], 'r', linewidth=1)
-        plt_list[i].plot([end_change, end_change], [y_min, y_max], 'y', linewidth=1)
+        plt_list[i].plot([start_change, start_change], [y_min, y_max], 'r', linewidth=2)
+        plt_list[i].plot([end_change, end_change], [y_min, y_max], 'y', linewidth=2)
 
         interp = interp1d(model_list[i].getDateTimes(), model_list[i].getPredicted(), kind='cubic')
         xnew = np.linspace(model_list[i].getDateTimes().min(), model_list[i].getDateTimes().max(), 500)
         
-        plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=1)
+        plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=2)
         
 def setupModels(all_band_data, num_bands, init_obs):
     
@@ -190,7 +191,14 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
                with open(change_file, 'a') as output_file:
                   writer = csv.writer(output_file)
                   writer.writerow([datetime.fromordinal(int(change_start_time)).strftime('%d/%m/%Y'), datetime.fromordinal(int(new_date)).strftime('%d/%m/%Y')])
-                
+            
+            # Pickle current models
+            if(args.save_models):
+                for model_num, model in enumerate(model_list):
+                    pkl_file = "{}_{}_{}_{}.pkl".format(change_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), model_num)
+                    joblib.dump(model, pkl_file) 
+                    
+            
             return pixel_data[next_obs:,]
         
         # Need to get the next observation
@@ -199,7 +207,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
     # No change detected, end of data reached
     return []
 
-def runCCDC(sref_data, toa_data, change_file, args, x_val=None, y_val=None):
+def runCCDC(sref_data, toa_data, change_file, args):
 
     """The main function which runs the CCDC algorithm. Loops until there are not enough observations
         left after a breakpoint to attempt to initialize a new model."""
@@ -236,17 +244,19 @@ def runCCDC(sref_data, toa_data, change_file, args, x_val=None, y_val=None):
             num_years = getNumYears(ts_data[:,0])
 
             if(args.outtype == 'plot'):
+                
+                change_file = change_file + ".png"
 
                 fig = plt.figure(figsize=(20, 10))
                 
                 # Set up plots with original data and screened data
                 for i in range(num_bands):
                     plt_list.append(fig.add_subplot(num_bands, 1, i+1))
-                    plt_list[i].plot(sref_data[:,0], sref_data[:,i+1], 'o', color='c', label='Original data', markersize=3)
-                    plt_list[i].plot(ts_data[:,0], ts_data[:,i+1], 'o', color='k', label='Data after RIRLS', markersize=3)
+                    plt_list[i].plot(sref_data[:,0], sref_data[:,i+1], 'o', color='c', label='Original data', markersize=4)
+                    plt_list[i].plot(ts_data[:,0], ts_data[:,i+1], 'o', color='k', label='Data after RIRLS', markersize=4)
                     myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
                     plt_list[i].xaxis.set_major_formatter(myFmt)
-                    plt_list[i].set_ylim(bottom=0, top=500)
+                    #plt_list[i].set_ylim(bottom=0, top=500)
 
             else:
                   change_file = change_file + ".csv"
@@ -291,7 +301,7 @@ def runCCDC(sref_data, toa_data, change_file, args, x_val=None, y_val=None):
                 for i in range(num_bands):
                     interp = interp1d(model_list[i].getDateTimes(), model_list[i].getPredicted(), kind='cubic')
                     xnew = np.linspace(model_list[i].getDateTimes().min(), model_list[i].getDateTimes().max(), 500)
-                    plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=1) # Plot fitted model
+                    plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=2) # Plot fitted model
 
                 # Plot empty datasets so start/end of change is included in legend
                 plt.plot([], [], 'r', label='Start change')
@@ -300,9 +310,14 @@ def runCCDC(sref_data, toa_data, change_file, args, x_val=None, y_val=None):
                 
                 plt.legend()
                 plt.tight_layout()
-                change_file = change_file + ".png"
                 plt.savefig(change_file)
                 plt.close(fig)
+             
+            # Save final models if requested
+            if(args.save_models):
+                for model_num, model in enumerate(model_list):
+                    pkl_file = "{}_{}_{}_{}.pkl".format(change_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), model_num)
+                    joblib.dump(model, pkl_file) 
                                  
     #else:
         #print('SREF and TOA data not the same length. Check indexing/ingestion.')
@@ -379,7 +394,10 @@ def runOnSubset(sref_products, toa_products, args):
                     if(sref_data.shape[1] == 6 and toa_data.shape[1] == 4):
                         
                         dc.close()
-                        change_file = args.outdir + "{0:.6f}".format(new_point.GetX()) + "_" + "{0:.6f}".format(new_point.GetX())
+                        x_coord = "{0:.6f}".format(new_point.GetX())
+                        y_coord = "{0:.6f}".format(new_point.GetX())
+                        
+                        change_file = "{}{}_{}".format(args.outdir, x_coord, y_coord)
                         
                         runCCDC(sref_data, toa_data, change_file, args)
                         curr_points += 1
@@ -437,7 +455,7 @@ def runOnArea(sref_products, toa_products, args):
                     x_val = float(sref_ts.x)
                     y_val = float(sref_ts.x)
                         
-                    change_file = args.outdir + str(x_val) + "_" + str(y_val)
+                    change_file = "{}{}_{}".format(args.outdir, str(x_val), str(y_val))
                     
                     # Block until a core becomes available
                     while(True):
@@ -456,7 +474,7 @@ def runOnArea(sref_products, toa_products, args):
                         if(len(processes) < num_processes):
                             break
                                     
-                    process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, args, x_val, y_val))
+                    process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, args))
                     processes.append(process)
                     process.start()
 
@@ -520,7 +538,7 @@ def runByTile(sref_products, toa_products, key, args):
             if(dataset.variables):
                 toa_ds.append(dataset)
 
-    # Check that both datasets are the same length
+    # Check that both datasets contain data and are the same length
     if(len(sref_ds) == len(toa_ds) and len(sref_ds) > 0 and len(toa_ds) > 0):
 
         sref = xr.concat(sref_ds, dim='time')
@@ -544,7 +562,7 @@ def runByTile(sref_products, toa_products, key, args):
                     x_val = float(sref_ts.x)
                     y_val = float(sref_ts.y)
                                     
-                    change_file = args.outdir + str(x_val) + "_" + str(y_val)
+                    change_file = "{}{}_{}".format(args.outdir, str(x_val), str(y_val))
                     
                     # Block until a core becomes available
                     while(True):
@@ -563,7 +581,7 @@ def runByTile(sref_products, toa_products, key, args):
                         if(len(processes) < num_processes):
                             break
                                         
-                    process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, args, x_val, y_val))
+                    process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, args))
                     processes.append(process)
                     process.start()
 
@@ -646,7 +664,7 @@ def runAll(sref_products, toa_products, args):
                         x_val = float(sref_ts.x)
                         y_val = float(sref_ts.y)
                                     
-                        change_file = args.outdir + str(x_val) + "_" + str(y_val)
+                        change_file = "{}{}_{}".format(args.outdir, str(x_val), str(y_val))
 
                         # Block until a core becomes available
                         while(True):
@@ -665,7 +683,7 @@ def runAll(sref_products, toa_products, args):
                             if(len(processes) < num_processes):
                                 break
                                         
-                        process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, args, x_val, y_val))
+                        process = multiprocessing.Process(target=runCCDC, args=(sref_data, toa_data, change_file, args))
                         processes.append(process)
                         process.start()
 
@@ -728,6 +746,7 @@ if __name__ == "__main__":
     parser.add_argument('-tp', '--toa_products', nargs='+', required=True, help="The top-of-atmosphere reflectance product(s) to use.")
     parser.add_argument('-i', '--re_init', type=int, default=1, help="The number of new observations added to a model before the model is refitted.")
     parser.add_argument('-p', '--num_procs', type=int, default=1, help="The number of processes to use.")
+    parser.add_argument('-s', '--save_models', type=bool, default=False, help="Whether models should be pickled.")
 
     args = parser.parse_args()
     

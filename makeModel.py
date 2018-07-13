@@ -90,6 +90,14 @@ class MakeCCDCModel(object):
     def getDateTimes(self):
 
         return self.datetimes
+    
+    def getMinDate(self):
+        
+        return np.min(self.datetimes)
+    
+    def getMaxDate(self):
+        
+        return np.max(self.datetimes)
 
     def getNumCoeffs(self):
 		

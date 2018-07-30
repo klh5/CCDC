@@ -81,31 +81,31 @@ def doTmask(input_ts, tmask_ts):
     
     """"Removes outliers from the input dataset using Tmask if possible."""
     
-    # Remove NaNs from TOA data
-    tmask_nan_mask = np.any(np.isnan(tmask_ts), axis=1)
-    tmask_ts = tmask_ts[~tmask_nan_mask]
+    # Transform TOA data into a Numpy array
+    tmask_ts = transformToArray(tmask_ts)
     
-     # Sort data by date
-    tmask_ts = tmask_ts[np.argsort(tmask_ts[:,0])]
-     
-    # Both datasets need to contain the same observations
-    if(np.array_equal(input_ts[:,0], tmask_ts[:,0])):
+    if(tmask_ts.shape[1] == 4): # Tmask data should always have 4 columns
+    
+        tmask_ts = tidyData(tmask_ts)
          
-        # Get the number of years covered by the data
-        num_years = getNumYears(input_ts[:,0])
-         
-        if(num_years > 0):
+        # Both datasets need to contain the same observations
+        if(np.array_equal(input_ts[:,0], tmask_ts[:,0])):
              
-            # Screen for outliers
-            robust_outliers = RLMRemoveOutliers(tmask_ts, input_ts)
-    
-            input_ts = robust_outliers.cleanData(num_years)
-            
+            # Get the number of years covered by the data
+            num_years = getNumYears(input_ts[:,0])
+             
+            if(num_years > 0):
+                 
+                # Screen for outliers
+                robust_outliers = RLMRemoveOutliers(tmask_ts, input_ts)
+        
+                input_ts = robust_outliers.cleanData(num_years)
+                
+            else:
+               print("Need at least 1 year of data to screen using Tmask.")
+               
         else:
-           print("Need at least 1 year of data to screen using Tmask.")
-           
-    else:
-       print("Input dataset and Tmask dataset do not match.")
+           print("Input dataset and Tmask dataset do not match.")
             
     return input_ts            
 
@@ -237,6 +237,19 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
     # No change detected, end of data reached
     return []
 
+def tidyData(pixel_ts):
+    
+    """Takes a single pixel time series, removes NaN values, and sorts by date."""
+    
+    # Remove NaNs
+    pixel_nan_mask = np.any(np.isnan(pixel_ts), axis=1)
+    pixel_ts = pixel_ts[~pixel_nan_mask]
+    
+    # Sort by date
+    pixel_ts = pixel_ts[np.argsort(pixel_ts[:,0])]
+                                              
+    return pixel_ts
+    
 def runCCDC(input_data, change_file, num_bands, args):
 
     """The main function which runs the CCDC algorithm. Loops until there are not enough observations
@@ -404,22 +417,13 @@ def runOnSubset(num_bands, args):
                 
                     input_data = transformToArray(input_data)
                     
-                    # Remove NaNs
-                    input_nan_mask = np.any(np.isnan(input_data), axis=1)
-                    input_data = input_data[~input_nan_mask]
-                
-                    # Sort by date
-                    input_data = input_data[np.argsort(input_data[:,0])]
+                    input_data = tidyData(input_data)
 
-                    if(input_data.shape[1] == input_num_cols):
+                    if(input_data.shape[1] == input_num_cols):                       
                         
-                        if(len(tmask_ds) > 0):                    
-                        
-                            tmask_data = transformToArray(tmask_data)
-                        
-                            if(tmask_data.shape[1] == 4): # Tmask data should always have 4 columns
-                            
-                                input_data = doTmask(input_data, tmask_data)
+                        if(len(tmask_ds) > 0):
+                                                                                       
+                            input_data = doTmask(input_data, tmask_data)
                            
                         x_coord = "{0:.6f}".format(new_point.GetX())
                         y_coord = "{0:.6f}".format(new_point.GetX())
@@ -486,24 +490,14 @@ def runOnArea(num_bands, args):
        
                 input_ts = transformToArray(input_ts)
                 
-                # Remove NaNs
-                input_nan_mask = np.any(np.isnan(input_ts), axis=1)
-                input_ts = input_ts[~input_nan_mask]
-                
-                # Sort by date
-                input_ts = input_ts[np.argsort(input_ts[:,0])]
+                input_ts = tidyData(input_ts)
     
                 if(input_ts.shape[1] == input_num_cols):
                     
                     if(len(tmask_ds) > 0):
                     
-                        tmask_ts = tmask_data.isel(x=i, y=j)
-                        
-                        tmask_ts = transformToArray(tmask_ts)
-                        
-                        if(tmask_ts.shape[1] == 4): # Tmask data should always have 4 columns
-                            
-                           input_ts = doTmask(input_ts, tmask_ts)
+                        tmask_ts = tmask_data.isel(x=i, y=j)                       
+                        input_ts = doTmask(input_ts, tmask_ts)
                         
                     change_file = "{}{}_{}".format(args.outdir, str(x_val), str(y_val))
                     
@@ -614,25 +608,15 @@ def runByTile(key, num_bands, args):
                 y_val = float(input_ts.y)
                 
                 input_ts = transformToArray(input_ts)
-                
-                # Remove NaNs
-                input_nan_mask = np.any(np.isnan(input_ts), axis=1)
-                input_ts = input_ts[~input_nan_mask]
-                
-                # Sort by date
-                input_ts = input_ts[np.argsort(input_ts[:,0])]
+                                
+                input_ts = tidyData(input_ts)
             
                 if(input_ts.shape[1] == input_num_cols):
                     
                     if(len(tmask_ds) > 0):
                     
-                        tmask_ts = tmask_data.isel(x=i, y=j)
-                        
-                        tmask_ts = transformToArray(tmask_ts)
-                        
-                        if(tmask_ts.shape[1] == 4): # Tmask data should always have 4 columns
-                            
-                           input_ts = doTmask(input_ts, tmask_ts)
+                        tmask_ts = tmask_data.isel(x=i, y=j)                       
+                        input_ts = doTmask(input_ts, tmask_ts)
                                                                                               
                     change_file = "{}{}_{}".format(args.outdir, str(x_val), str(y_val))
                     
@@ -741,24 +725,14 @@ def runAll(num_bands, args):
 
                     input_ts = transformToArray(input_ts) # Transform the time series into a numpy array
                     
-                    # Remove NaNs
-                    input_nan_mask = np.any(np.isnan(input_ts), axis=1)
-                    input_ts = input_ts[~input_nan_mask]
-                    
-                    # Sort by date
-                    input_ts = input_ts[np.argsort(input_ts[:,0])]
+                    input_ts = tidyData(input_ts)
                                               
                     if(input_ts.shape[1] == input_num_cols):
                         
                         if(len(tmask_ds) > 0):
                     
                             tmask_ts = tmask_data.isel(x=i, y=j)
-                            
-                            tmask_ts = transformToArray(tmask_ts)
-                            
-                            if(tmask_ts.shape[1] == 4): # Tmask data should always have 4 columns
-                                
-                               input_ts = doTmask(input_ts, tmask_ts)
+                            input_ts = doTmask(input_ts, tmask_ts)
                                    
                         change_file = "{}{}_{}".format(args.outdir, str(x_val), str(y_val))
 

@@ -77,6 +77,21 @@ def transformToArray(dataset_to_transform):
 
     return ds_to_array
 
+def setupPredictionFile(output_file, num_bands):
+    
+    """Creates an output CSV file for the pixel being predicted, with column names"""
+           
+    with open(output_file, 'w') as output:
+        writer = csv.writer(output)
+        
+        row = []
+        
+        for i in range(num_bands):
+            heading = "band_{}".format(i+1)
+            row.append(heading)
+ 
+        writer.writerow(row) 
+       
 def doTmask(input_ts, tmask_ts):
     
     """"Removes outliers from the input dataset using Tmask if possible."""
@@ -214,13 +229,15 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
         if(change_flag == 6):
             #print("Change detected!")
             
-            if(args.outtype == 'plot'):
-                addChangeMarker(num_bands, change_start_time, new_date, pixel_data)
-
-            else:
-               with open(change_file, 'a') as output_file:
-                  writer = csv.writer(output_file)
-                  writer.writerow([datetime.fromordinal(int(change_start_time)).strftime('%d/%m/%Y'), datetime.fromordinal(int(new_date)).strftime('%d/%m/%Y')])
+            if(args.output_mode == "normal"):
+                
+                if(args.outtype == 'plot'):
+                    addChangeMarker(num_bands, change_start_time, new_date, pixel_data)
+    
+                else:
+                   with open(change_file, 'a') as output_file:
+                      writer = csv.writer(output_file)
+                      writer.writerow([datetime.fromordinal(int(change_start_time)).strftime('%d/%m/%Y'), datetime.fromordinal(int(new_date)).strftime('%d/%m/%Y')])
             
             # Pickle current models
             if(args.save_models):
@@ -250,38 +267,48 @@ def tidyData(pixel_ts):
                                               
     return pixel_ts
     
-def runCCDC(input_data, change_file, num_bands, args):
+def runCCDC(input_data, num_bands, output_file, args):
 
     """The main function which runs the CCDC algorithm. Loops until there are not enough observations
         left after a breakpoint to attempt to initialize a new model."""
-    
-    num_changes = 0
         
     # Get the number of years covered by the dataset
     num_years = getNumYears(input_data[:,0])
     
     # The algorithm needs at least 1 year of data (after any screening)
     if(num_years > 0 and len(input_data) >= 12):
+        
+        if(args.output_mode == "normal"):
                               
-        if(args.outtype == 'plot'):
+            if(args.outtype == 'plot'):
+                
+                output_file = output_file + ".png"
+                  
+                fig = plt.figure(figsize=(20, 10))
+                
+                # Set up plots with original data and screened data
+                for i in range(num_bands):
+                    plt_list.append(fig.add_subplot(num_bands, 1, i+1))
+                    plt_list[i].plot(input_data[:,0], input_data[:,i+1], 'o', color='c', label='Original data', markersize=4)
+                    myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
+                    plt_list[i].xaxis.set_major_formatter(myFmt)
+                    #plt_list[i].set_ylim(bottom=0, top=500)
+    
+            else:
+                  output_file = output_file + ".csv"
+                  
+                  with open(output_file, 'w') as output:
+                     writer = csv.writer(output)
+                     writer.writerow(['start_change', 'end_change'])
+           
+        if(args.output_mode == "predictive"):
             
-            change_file = change_file + ".png"
+            # Convert stopping date to ordinal so that it can easily be predicted
+            end_date = datetime.strptime(args.date_to_predict, "%Y/%m/%d %H:%M:%S").toordinal()
 
-            fig = plt.figure(figsize=(20, 10))
-            
-            # Set up plots with original data and screened data
-            for i in range(num_bands):
-                plt_list.append(fig.add_subplot(num_bands, 1, i+1))
-                plt_list[i].plot(input_data[:,0], input_data[:,i+1], 'o', color='c', label='Original data', markersize=4)
-                myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
-                plt_list[i].xaxis.set_major_formatter(myFmt)
-                #plt_list[i].set_ylim(bottom=0, top=500)
-
-        else:
-              change_file = change_file + ".csv"
-              with open(change_file, 'w') as output_file:
-                 writer = csv.writer(output_file)
-                 writer.writerow(['start_change', 'end_change'])
+            # Set up output file
+            output_file = output_file + ".csv"
+            setupPredictionFile(output_file, num_bands)                 
                  
         # We need at least 12 clear observations (6 + 6 to detect change)
         while(len(input_data) >= 12):
@@ -292,22 +319,37 @@ def runCCDC(input_data, change_file, num_bands, args):
         
                 if(num_clear_obs < 18):
                     # Use simple model with initialization period of 6 obs
-                    input_data = findChange(input_data, change_file, num_bands, 6, args)
+                    input_data = findChange(input_data, output_file, num_bands, 6, args)
                 
                 elif(num_clear_obs >= 18 and num_clear_obs < 24):
                     # Use simple model with initialization period of 12 obs
-                    input_data = findChange(input_data, change_file, num_bands, 12, args)
+                    input_data = findChange(input_data, output_file, num_bands, 12, args)
 
                 elif(num_clear_obs >= 24 and num_clear_obs < 30):
                     # Use advanced model with initialization period of 18 obs
-                    input_data = findChange(input_data, change_file, num_bands, 18, args)
+                    input_data = findChange(input_data, output_file, num_bands, 18, args)
                 
                 elif(num_clear_obs >= 30):
                     # Use full model with initialisation period of 24 obs
-                    input_data = findChange(input_data, change_file, num_bands, 24, args)
-
-                if(len(input_data) > 0):
-                    num_changes = num_changes + 1
+                    input_data = findChange(input_data, output_file, num_bands, 24, args)
+                    
+                if(args.output_mode == "predictive"):
+                    
+                    if(len(input_data) > 0):
+                        
+                        if(input_data[0][0] > end_date):
+                        
+                            with open(output_file, 'a') as output:
+                                writer = csv.writer(output)
+                                row = []
+                                
+                                for model in model_list:
+                                    prediction = model.getPrediction(end_date)[0]
+                                    row.append(prediction)
+                                    
+                                writer.writerow(row)
+                                
+                                return
                 
             else:
                 #print("Less than 1 year of observations remaining.")
@@ -315,7 +357,7 @@ def runCCDC(input_data, change_file, num_bands, args):
 
         #print("Ran out of observations.")
 
-        if(args.outtype == 'plot'):
+        if(args.output_mode == "normal" and args.outtype == 'plot'):
 
             for i in range(num_bands):
                 interp = interp1d(model_list[i].getDateTimes(), model_list[i].getPredicted(), kind='cubic')
@@ -329,13 +371,13 @@ def runCCDC(input_data, change_file, num_bands, args):
             
             plt.legend()
             plt.tight_layout()
-            plt.savefig(change_file)
+            plt.savefig(output_file)
             plt.close(fig)
          
         # Save final models if requested
         if(args.save_models):
             for model_num, model in enumerate(model_list):
-                pkl_file = "{}_{}_{}_{}.pkl".format(change_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), model_num)
+                pkl_file = "{}_{}_{}_{}.pkl".format(output_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), model_num)
                 joblib.dump(model, pkl_file) 
                              
 
@@ -428,9 +470,10 @@ def runOnSubset(num_bands, args):
                         x_coord = "{0:.6f}".format(new_point.GetX())
                         y_coord = "{0:.6f}".format(new_point.GetX())
                         
-                        change_file = "{}{}_{}".format(args.outdir, x_coord, y_coord)
+                        output_coords = "{}_{}".format(x_coord, y_coord)                                                                      
+                        output_file = os.path.join(args.outdir, output_coords)
                         
-                        runCCDC(input_data, change_file, num_bands, args)
+                        runCCDC(input_data, num_bands, output_file, args)
                         curr_points += 1
 
 def runOnArea(num_bands, args):
@@ -485,8 +528,8 @@ def runOnArea(num_bands, args):
                 
                 input_ts = input_data.isel(x=i, y=j)
                 
-                x_val = float(input_ts.x)
-                y_val = float(input_ts.x)
+                x_val = str(float(input_ts.x))
+                y_val = str(float(input_ts.x))
        
                 input_ts = transformToArray(input_ts)
                 
@@ -499,7 +542,8 @@ def runOnArea(num_bands, args):
                         tmask_ts = tmask_data.isel(x=i, y=j)                       
                         input_ts = doTmask(input_ts, tmask_ts)
                         
-                    change_file = "{}{}_{}".format(args.outdir, str(x_val), str(y_val))
+                    output_coords = "{}_{}".format(x_val, y_val)                                                                      
+                    output_file = os.path.join(args.outdir, output_coords)
                     
                     # Block until a core becomes available
                     while(True):
@@ -518,7 +562,7 @@ def runOnArea(num_bands, args):
                         if(len(processes) < num_processes):
                             break
                                     
-                    process = multiprocessing.Process(target=runCCDC, args=(input_ts, change_file, num_bands, args))
+                    process = multiprocessing.Process(target=runCCDC, args=(input_ts, num_bands, output_file, args))
                     processes.append(process)
                     process.start()
 
@@ -604,8 +648,8 @@ def runByTile(key, num_bands, args):
                 
                 input_ts = input_data.isel(x=i, y=j)
                 
-                x_val = float(input_ts.x)
-                y_val = float(input_ts.y)
+                x_val = str(float(input_ts.x))
+                y_val = str(float(input_ts.y))
                 
                 input_ts = transformToArray(input_ts)
                                 
@@ -617,8 +661,9 @@ def runByTile(key, num_bands, args):
                     
                         tmask_ts = tmask_data.isel(x=i, y=j)                       
                         input_ts = doTmask(input_ts, tmask_ts)
-                                                                                              
-                    change_file = "{}{}_{}".format(args.outdir, str(x_val), str(y_val))
+                    
+                    output_coords = "{}_{}".format(x_val, y_val)                                                                      
+                    output_file = os.path.join(args.outdir, output_coords)
                     
                     # Block until a core becomes available
                     while(True):
@@ -637,7 +682,7 @@ def runByTile(key, num_bands, args):
                         if(len(processes) < num_processes):
                             break
                                         
-                    process = multiprocessing.Process(target=runCCDC, args=(input_ts, change_file, num_bands, args))
+                    process = multiprocessing.Process(target=runCCDC, args=(input_ts, num_bands, output_file, args))
                     processes.append(process)
                     process.start()
 
@@ -720,8 +765,8 @@ def runAll(num_bands, args):
 
                     input_ts = input_data.isel(x=i, y=j) # Get just one pixel
                     
-                    x_val = float(input_ts.x)
-                    y_val = float(input_ts.y)
+                    x_val = str(float(input_ts.x))
+                    y_val = str(float(input_ts.y))
 
                     input_ts = transformToArray(input_ts) # Transform the time series into a numpy array
                     
@@ -732,10 +777,11 @@ def runAll(num_bands, args):
                         if(len(tmask_ds) > 0):
                     
                             tmask_ts = tmask_data.isel(x=i, y=j)
-                            input_ts = doTmask(input_ts, tmask_ts)
-                                   
-                        change_file = "{}{}_{}".format(args.outdir, str(x_val), str(y_val))
-
+                            input_ts = doTmask(input_ts, tmask_ts)    
+                              
+                        output_coords = "{}_{}".format(x_val, y_val)                                                                      
+                        output_file = os.path.join(args.outdir, output_coords)
+                        
                         # Block until a core becomes available
                         while(True):
     
@@ -753,7 +799,7 @@ def runAll(num_bands, args):
                             if(len(processes) < num_processes):
                                 break
                                         
-                        process = multiprocessing.Process(target=runCCDC, args=(input_ts, change_file, num_bands, args))
+                        process = multiprocessing.Process(target=runCCDC, args=(input_ts, num_bands, output_file, args))
                         processes.append(process)
                         process.start()
 
@@ -773,29 +819,45 @@ def main(args):
     
     global model_list 
     model_list = [None for i in range(num_bands)] # Set up list of models
+    
+    # Chec output mode
+    if(args.output_mode == "predictive"):
+        if(args.date_to_predict is not None):
+        
+            date_dir = args.date_to_predict.replace('/', '.').replace(':', '.').replace(' ', '_')
+            new_dir = os.path.join(args.outdir, date_dir)
+
+            if not(os.path.isdir(new_dir)):
+                os.makedirs(new_dir)
+                
+            args.outdir = new_dir
+        
+        else:
+            print("Date to predict must be specified if output mode is predictive.")
+            sys.exit()
 
     if(args.lowerlat is not None and args.upperlat is not None and args.lowerlon is not None and args.upperlon is not None):
 
-        if(args.mode == "subsample"):
+        if(args.process_mode == "subsample"):
             runOnSubset(num_bands, args)
 
-        elif(args.mode == "area"):
+        elif(args.process_mode == "area"):
             runOnArea(num_bands, args)
             
-        elif(args.mode == "all"):
-            runAll(num_bands, args)
+        elif(args.process_mode == "all"):
+            runAll(num_bands, args) 
 
         else:
-            print("Lat/long boundaries were provided, but mode was not subsample, area, or all.")
+            print("Lat/long boundaries were provided, but process_mode was not subsample, area, or all.")
 
     elif(len(args.key) > 1 and args.tile_x_min is not None and args.tile_x_max is not None and args.tile_y_min is not None and args.tile_y_max is not None):
 
-        if(args.mode == "tile"):
+        if(args.process_mode == "tile"):
             key = tuple(args.key)
             runByTile(key, num_bands, args)
 
         else:
-            print("Key/pixel details were provided, but mode was not single pixel.")
+            print("Key/pixel details were provided, but process_mode was not single pixel.")
 
     else:
         print("Please provide either lat/long boundaries or pixel coordinates and cell key.")
@@ -814,7 +876,9 @@ if __name__ == "__main__":
     parser.add_argument('-t_xmax', '--tile_x_max', type=int, default=None, help="The maximum/ending x value of the area of the tile you want to process. Required if using tile mode.")
     parser.add_argument('-t_ymin', '--tile_y_min', type=int, default=None, help="The minimum/starting y value of the area of the tile you want to process. Required if using tile mode.")
     parser.add_argument('-t_ymax', '--tile_y_max', type=int, default=None, help="The maximum/ending y value of the area of the tile you want to process. Required if using tile mode.")
-    parser.add_argument('-m', '--mode', choices=['area','subsample', 'tile', 'all'], default='all', help="Whether the algorithm should be run on a specified area, a subsample of a (specified) area, a specific tile, or all available data.")
+    parser.add_argument('-pm', '--process_mode', choices=['area','subsample', 'tile', 'all'], default='all', help="Whether the algorithm should be run on a specified area, a subsample of a (specified) area, a specific tile, or all available data.")
+    parser.add_argument('-om', '--output_mode', choices=['normal','predictive'], default="normal", help="Whether the algorithm should generate change output (normal) or output a prediction for the area specified.")
+    parser.add_argument('-pdate', '--date_to_predict', default=None, help="The date to predict for, if output_mode is predictive. Must be in format YYYY/MM/DD HH:MM:SS")  
     parser.add_argument('-num', '--num_points', type=int, default=100, help="Specifies the number of subsamples to take if a random subsample is being processed.")
     parser.add_argument('-ot', '--outtype', choices=['plot', 'csv'], default='csv', help="Specifies the format of the output data. Either a plot or a CSV file will be produced for each pixel.")
     parser.add_argument('-ip', '--input_products', nargs='+', required=True, help="The product(s) to use for change detection.")    
@@ -822,7 +886,8 @@ if __name__ == "__main__":
     parser.add_argument('-i', '--re_init', type=int, default=1, help="The number of new observations added to a model before the model is refitted.")
     parser.add_argument('-p', '--num_procs', type=int, default=1, help="The number of processes to use.")
     parser.add_argument('-s', '--save_models', type=bool, default=False, help="Whether models should be pickled.")
-    parser.add_argument('-b', '--bands', nargs='+', required=True, help="List of band names to use in the analysis.")
+    parser.add_argument('-b', '--bands', nargs='+', required=True, help="List of band names to use in the analysis.")    
+    
     
     args = parser.parse_args()
     

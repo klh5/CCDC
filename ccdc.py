@@ -77,7 +77,7 @@ def transformToArray(dataset_to_transform):
 
     return ds_to_array
 
-def setupPredictionFile(output_file, num_bands):
+def setupPredictionFile(output_file, num_bands, band_names):
     
     """Creates an output CSV file for the pixel being predicted, with column names"""
            
@@ -86,11 +86,22 @@ def setupPredictionFile(output_file, num_bands):
         
         row = []
         
-        for i in range(num_bands):
-            heading = "band_{}".format(i+1)
-            row.append(heading)
+        for band in band_names:
+            row.append(band)
  
         writer.writerow(row) 
+        
+def writeOutPrediction(output_file, end_date):
+    
+    with open(output_file, 'a') as output:
+        writer = csv.writer(output)
+        row = []
+        
+        for model in model_list:
+            prediction = model.getPrediction(end_date)[0]
+            row.append(prediction)
+            
+        writer.writerow(row)
        
 def doTmask(input_ts, tmask_ts):
     
@@ -308,7 +319,7 @@ def runCCDC(input_data, num_bands, output_file, args):
 
             # Set up output file
             output_file = output_file + ".csv"
-            setupPredictionFile(output_file, num_bands)                 
+            setupPredictionFile(output_file, num_bands, args.bands)                 
                  
         # We need at least 12 clear observations (6 + 6 to detect change)
         while(len(input_data) >= 12):
@@ -335,21 +346,15 @@ def runCCDC(input_data, num_bands, output_file, args):
                     
                 if(args.output_mode == "predictive"):
                     
-                    if(len(input_data) > 0):
-                        
+                    # input_data always contains the next set of values, i.e. after a break. If the first observation in this
+                    # set is greater than the date to predict, the current set of models are the ones to use.
+                    if(len(input_data) > 0): # If there is still data left to process                        
                         if(input_data[0][0] > end_date):
-                        
-                            with open(output_file, 'a') as output:
-                                writer = csv.writer(output)
-                                row = []
-                                
-                                for model in model_list:
-                                    prediction = model.getPrediction(end_date)[0]
-                                    row.append(prediction)
-                                    
-                                writer.writerow(row)
-                                
-                                return
+                            writeOutPrediction(output_file, end_date)
+                            return
+                            
+                    else: # End of data has been reached without finding the date to predict
+                        writeOutPrediction(output_file, end_date)
                 
             else:
                 #print("Less than 1 year of observations remaining.")

@@ -610,7 +610,7 @@ def runByTile(key, num_bands, args):
 
         # Retrieve the specified pixel for each tile in the list
         for tile_index, tile in tile_list.items():
-            dataset = curr_gw.load(tile[0:1, min_x:max_x, min_y:max_y], measurements=args.bands)
+            dataset = curr_gw.load(tile[0:1, min_y:max_y, min_x:max_x], measurements=args.bands)
 
             if(dataset.variables):
                 input_ds.append(dataset)
@@ -631,7 +631,7 @@ def runByTile(key, num_bands, args):
             
             # Retrieve the specified pixel for each tile in the list
             for tile_index, tile in tile_list.items():
-                dataset = curr_gw.load(tile[0:1, min_x:max_x, min_y:max_y], measurements=['green', 'nir', 'swir1'])
+                dataset = curr_gw.load(tile[0:1, min_y:max_y, min_x:max_x], measurements=['green', 'nir', 'swir1'])
                 
                 if(dataset.variables):
                     tmask_ds.append(dataset)

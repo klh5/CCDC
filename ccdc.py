@@ -315,7 +315,7 @@ def runCCDC(input_data, num_bands, output_file, args):
         if(args.output_mode == "predictive"):
             
             # Convert stopping date to ordinal so that it can easily be predicted
-            end_date = datetime.strptime(args.date_to_predict, "%Y/%m/%d").toordinal()
+            end_date = datetime.strptime(args.date_to_predict, "%Y-%m-%d").toordinal()
 
             # Set up output file
             output_file = output_file + ".csv"
@@ -829,8 +829,7 @@ def main(args):
     if(args.output_mode == "predictive"):
         if(args.date_to_predict is not None):
         
-            date_dir = args.date_to_predict.replace('/', '.').replace(':', '.').replace(' ', '_')
-            new_dir = os.path.join(args.outdir, date_dir)
+            new_dir = os.path.join(args.outdir, args.date_to_predict)
 
             if not(os.path.isdir(new_dir)):
                 os.makedirs(new_dir)
@@ -883,7 +882,7 @@ if __name__ == "__main__":
     parser.add_argument('-t_ymax', '--tile_y_max', type=int, default=None, help="The maximum/ending y value of the area of the tile you want to process. Required if using tile mode.")
     parser.add_argument('-pm', '--process_mode', choices=['area','subsample', 'tile', 'all'], default='all', help="Whether the algorithm should be run on a specified area, a subsample of a (specified) area, a specific tile, or all available data.")
     parser.add_argument('-om', '--output_mode', choices=['normal','predictive'], default="normal", help="Whether the algorithm should generate change output (normal) or output a prediction for the area specified.")
-    parser.add_argument('-pdate', '--date_to_predict', default=None, help="The date to predict for, if output_mode is predictive. Must be in format YYYY/MM/DD")  
+    parser.add_argument('-pdate', '--date_to_predict', default=None, help="The date to predict for, if output_mode is predictive. Must be in format YYYY-MM-DD")  
     parser.add_argument('-num', '--num_points', type=int, default=100, help="Specifies the number of subsamples to take if a random subsample is being processed.")
     parser.add_argument('-ot', '--outtype', choices=['plot', 'csv'], default='csv', help="Specifies the format of the output data. Either a plot or a CSV file will be produced for each pixel.")
     parser.add_argument('-ip', '--input_products', nargs='+', required=True, help="The product(s) to use for change detection.")    

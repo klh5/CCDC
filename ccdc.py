@@ -822,7 +822,9 @@ def runOnCSV(num_bands, args):
     
     ts_data = pd.read_csv(args.csv_file)
     
-    output_file = os.path.join(args.outdir, "{}_results".format(args.csv_file.strip('.csv')))
+    uq_name = "{}_change".format(args.csv_file.split('/')[-1].strip('.csv')) 
+
+    output_file = os.path.join(args.outdir, uq_name)
 
     ts_data.datetime = dateToNumber(ts_data.datetime)
     

@@ -66,11 +66,17 @@ def getNumYears(date_list):
 
     return num_years
 
+def dateToNumber(dates):
+    
+    dates_as_ordinal = np.array([pd.Timestamp(x).toordinal() for x in dates])
+    
+    return dates_as_ordinal
+
 def transformToArray(dataset_to_transform):
 
     """Transforms xarray Dataset object into a Numpy array"""
     
-    ds_to_array = np.array([pd.Timestamp(x).toordinal() for x in dataset_to_transform.time.data]).reshape(-1, 1)
+    ds_to_array = dateToNumber(dataset_to_transform.time.data).reshape(-1, 1)
     
     for var in dataset_to_transform.data_vars:
         ds_to_array = np.hstack((ds_to_array, dataset_to_transform[var].values.reshape(-1, 1)))
@@ -811,14 +817,25 @@ def runAll(num_bands, args):
     # Keep running until all processes have finished
     for p in processes:
         p.join()
+        
+def runOnCSV(num_bands, args):
+    
+    ts_data = pd.read_csv(args.csv_file)
+
+    ts_data.datetime = dateToNumber(ts_data.datetime)
+       
+    runCCDC(ts_data.values, num_bands, "output", args)
   
 def main(args):
     
     """Program runs from here"""
 
     if(not os.path.isdir(args.outdir)):
-       print("Output directory does not exist.")
-       sys.exit()
+       os.makedirs(args.outdir)
+       
+    if(not args.input_products and not args.csv_file):
+        print("Either a list of Data Cube products or a CSV file is required for input.")
+        sys.exit()
        
     num_bands = len(args.bands)
     
@@ -827,7 +844,7 @@ def main(args):
     
     # Chec output mode
     if(args.output_mode == "predictive"):
-        if(args.date_to_predict is not None):
+        if(args.date_to_predict):
         
             new_dir = os.path.join(args.outdir, args.date_to_predict)
 
@@ -839,8 +856,8 @@ def main(args):
         else:
             print("Date to predict must be specified if output mode is predictive.")
             sys.exit()
-
-    if(args.lowerlat is not None and args.upperlat is not None and args.lowerlon is not None and args.upperlon is not None):
+               
+    if(args.lowerlat and args.upperlat and args.lowerlon and args.upperlon):
 
         if(args.process_mode == "subsample"):
             runOnSubset(num_bands, args)
@@ -854,7 +871,7 @@ def main(args):
         else:
             print("Lat/long boundaries were provided, but process_mode was not subsample, area, or all.")
 
-    elif(len(args.key) > 1 and args.tile_x_min is not None and args.tile_x_max is not None and args.tile_y_min is not None and args.tile_y_max is not None):
+    elif(len(args.key) > 1 and args.tile_x_min and args.tile_x_max and args.tile_y_min and args.tile_y_max):
 
         if(args.process_mode == "tile"):
             key = tuple(args.key)
@@ -864,34 +881,38 @@ def main(args):
             print("Key/pixel details were provided, but process_mode was not single pixel.")
 
     else:
-        print("Please provide either lat/long boundaries or pixel coordinates and cell key.")
+        if(args.process_mode == "csv" and args.csv_file):
+            runOnCSV(num_bands, args)
+            
+        else:
+            print("Either lat/long boundaries, pixel coordinates and cell key, or CSV file name is missing.")
         
 
 if __name__ == "__main__":
    
     parser = argparse.ArgumentParser(description="Run CCDC algorithm using Data Cube.", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-d', '--outdir', default="./", help="The output directory for any produced csv files/images/plots.")
-    parser.add_argument('-llat', '--lowerlat', type=float, default=None, help="The lower latitude boundary of the area to be processed. Required if using area or subsample modes.")
-    parser.add_argument('-ulat', '--upperlat', type=float, default=None, help="The upper latitude boundary of the area to be processed. Required if using area or subsample modes.")
-    parser.add_argument('-llon', '--lowerlon', type=float, default=None, help="The lower longitude boundary of the area to be processed. Required if using area or subsample modes.")
-    parser.add_argument('-ulon', '--upperlon', type=float, default=None, help="The upper longitude boundary of the area to be processed. Required if using area or subsample modes.")
+    parser.add_argument('-llat', '--lowerlat', type=float, help="The lower latitude boundary of the area to be processed. Required if using area or subsample modes.")
+    parser.add_argument('-ulat', '--upperlat', type=float, help="The upper latitude boundary of the area to be processed. Required if using area or subsample modes.")
+    parser.add_argument('-llon', '--lowerlon', type=float, help="The lower longitude boundary of the area to be processed. Required if using area or subsample modes.")
+    parser.add_argument('-ulon', '--upperlon', type=float, help="The upper longitude boundary of the area to be processed. Required if using area or subsample modes.")
     parser.add_argument('-k', '--key', type=int, nargs='*', default=[], help="The key for the cell to be processed. Must be entered as two separate integers, e.g. 6 -27. Required if using tile mode.")
-    parser.add_argument('-t_xmin', '--tile_x_min', type=int, default=None, help="The minimum/starting x value of the area of the tile you want to process. Required if using tile mode.")
-    parser.add_argument('-t_xmax', '--tile_x_max', type=int, default=None, help="The maximum/ending x value of the area of the tile you want to process. Required if using tile mode.")
-    parser.add_argument('-t_ymin', '--tile_y_min', type=int, default=None, help="The minimum/starting y value of the area of the tile you want to process. Required if using tile mode.")
-    parser.add_argument('-t_ymax', '--tile_y_max', type=int, default=None, help="The maximum/ending y value of the area of the tile you want to process. Required if using tile mode.")
-    parser.add_argument('-pm', '--process_mode', choices=['area','subsample', 'tile', 'all'], default='all', help="Whether the algorithm should be run on a specified area, a subsample of a (specified) area, a specific tile, or all available data.")
+    parser.add_argument('-t_xmin', '--tile_x_min', type=int, help="The minimum/starting x value of the area of the tile you want to process. Required if using tile mode.")
+    parser.add_argument('-t_xmax', '--tile_x_max', type=int, help="The maximum/ending x value of the area of the tile you want to process. Required if using tile mode.")
+    parser.add_argument('-t_ymin', '--tile_y_min', type=int, help="The minimum/starting y value of the area of the tile you want to process. Required if using tile mode.")
+    parser.add_argument('-t_ymax', '--tile_y_max', type=int, help="The maximum/ending y value of the area of the tile you want to process. Required if using tile mode.")
+    parser.add_argument('-pm', '--process_mode', choices=['area','subsample', 'tile', 'all', 'csv'], default='all', help="Whether the algorithm should be run on a specified area, a subsample of a (specified) area, a specific tile, or all available data. You can also provide a CSV file to analyse.")
     parser.add_argument('-om', '--output_mode', choices=['normal','predictive'], default="normal", help="Whether the algorithm should generate change output (normal) or output a prediction for the area specified.")
-    parser.add_argument('-pdate', '--date_to_predict', default=None, help="The date to predict for, if output_mode is predictive. Must be in format YYYY-MM-DD")  
+    parser.add_argument('-pdate', '--date_to_predict', help="The date to predict for, if output_mode is predictive. Must be in format YYYY-MM-DD")  
     parser.add_argument('-num', '--num_points', type=int, default=100, help="Specifies the number of subsamples to take if a random subsample is being processed.")
     parser.add_argument('-ot', '--outtype', choices=['plot', 'csv'], default='csv', help="Specifies the format of the output data. Either a plot or a CSV file will be produced for each pixel.")
-    parser.add_argument('-ip', '--input_products', nargs='+', required=True, help="The product(s) to use for change detection.")    
+    parser.add_argument('-ip', '--input_products', nargs='+', help="The product(s) to use for change detection.")    
     parser.add_argument('-tp', '--tmask_products', nargs='+', help="The top-of-atmosphere reflectance product(s) to use for Tmask screening. If no products are specified no screening will be applied.")
     parser.add_argument('-i', '--re_init', type=int, default=1, help="The number of new observations added to a model before the model is refitted.")
     parser.add_argument('-p', '--num_procs', type=int, default=1, help="The number of processes to use.")
     parser.add_argument('-s', '--save_models', type=bool, default=False, help="Whether models should be pickled.")
     parser.add_argument('-b', '--bands', nargs='+', required=True, help="List of band names to use in the analysis.")    
-    
+    parser.add_argument('-csv', '--csv_file', help="The CSV file to use, if process mode is CSV.")
     
     args = parser.parse_args()
     

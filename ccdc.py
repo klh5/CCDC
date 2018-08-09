@@ -821,10 +821,12 @@ def runAll(num_bands, args):
 def runOnCSV(num_bands, args):
     
     ts_data = pd.read_csv(args.csv_file)
+    
+    output_file = "{}_results".format(args.csv_file.strip('.csv'))
 
     ts_data.datetime = dateToNumber(ts_data.datetime)
        
-    runCCDC(ts_data.values, num_bands, "output", args)
+    runCCDC(ts_data.values, num_bands, output_file, args)
   
 def main(args):
     

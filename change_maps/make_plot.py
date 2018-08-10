@@ -63,19 +63,15 @@ def main(args):
         x_size = len(dataset.x.values)
         y_size = len(dataset.y.values)
         
-        width = 20
-        aspect = y_size / x_size # Get aspect ratio for plots, since area is not always square
+        aspect = x_size / y_size # Get aspect ratio for plots, since area is not always square
+        
+        plt.rcParams.update({'font.size': 22})
 
-        height = width * aspect
-        
-        fig, ax = plt.subplots(figsize=(width, height))
-        
         # Create plot
-        dataset['num_changes'].plot(cmap=plt.cm.OrRd, ax=ax)
-        
-        ax.tick_params(labelsize=16)
+        dataset['num_changes'].plot(cmap=plt.cm.OrRd, aspect=aspect, size=20)        
         
         plt.xticks(rotation='vertical')
+        plt.tight_layout()
         plt.savefig("change_intensity_map.png")
         
         print("Generating KEA file...")

@@ -439,6 +439,7 @@ def runOnSubset(num_bands, args):
             if(new_point.Within(poly)):
                
                 input_ds = []
+                cloud_ds = []
                 tmask_ds = []
 
                 dc = datacube.Datacube()
@@ -456,7 +457,15 @@ def runOnSubset(num_bands, args):
 
                         if(dataset.variables):
                             tmask_ds.append(dataset)
-                              
+                            
+                if(args.cloud_products):
+                    
+                    for product in args.cloud_products:
+                        dataset = dc.load(product=product, measurements=['cloud_mask'], lat=(new_point_lat), lon=(new_point_long))
+
+                        if(dataset.variables):
+                            cloud_ds.append(dataset)
+                             
                 dc.close()
                         
                 if(len(input_ds) == len(input_products)):
@@ -465,8 +474,21 @@ def runOnSubset(num_bands, args):
                     input_data = xr.concat(input_ds, dim='time')
                     input_data = mask_invalid_data(input_data)
                     
+                    if(cloud_ds):
+                        cloud_masks = xr.concat(cloud_ds, dim='time')
+                        
+                        # Data must be sorted for this to work
+                        cloud_masks  = cloud_masks.sortby('time')
+                        input_data = input_data.sortby('time')
+                        
+                        try:
+                            input_data = input_data.where(cloud_masks.cloud_mask == 0)
+                        except ValueError:
+                            print("Cloud masks could not be applied.")
+                            pass
+                    
                     # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
-                    if(len(tmask_ds) > 0):
+                    if(tmask_ds):
                 
                         tmask_data = xr.concat(tmask_ds, dim='time')
                         tmask_data = mask_invalid_data(tmask_data)
@@ -477,7 +499,7 @@ def runOnSubset(num_bands, args):
 
                     if(input_data.shape[1] == input_num_cols):                       
                         
-                        if(len(tmask_ds) > 0):
+                        if(tmask_ds > 0):
                                                                                        
                             input_data = doTmask(input_data, tmask_data)
                            
@@ -501,6 +523,7 @@ def runOnArea(num_bands, args):
     input_products = args.input_products
     
     input_ds = []
+    cloud_ds =[]
     tmask_ds = []
     
     num_processes = args.num_procs
@@ -522,6 +545,14 @@ def runOnArea(num_bands, args):
         
             if(dataset.variables):
                 tmask_ds.append(dataset)
+                
+    if(args.cloud_products):
+        
+        for product in args.cloud_products:
+            dataset = dc.load(product=product, measurements=['cloud_mask'], lat=(args.lowerlat, args.upperlat), lon=(args.lowerlon, args.upperlon))
+        
+            if(dataset.variables):
+                cloud_ds.append(dataset)            
             
     dc.close()
     
@@ -530,6 +561,19 @@ def runOnArea(num_bands, args):
         # Tidy up input data
         input_data = xr.concat(input_ds, dim='time')
         input_data = mask_invalid_data(input_data)
+        
+        if(cloud_ds):
+            cloud_masks = xr.concat(cloud_ds, dim='time')
+            
+            # Data must be sorted for this to work
+            cloud_masks  = cloud_masks.sortby('time')
+            input_data = input_data.sortby('time')
+            
+            try:
+                input_data = input_data.where(cloud_masks.cloud_mask == 0)
+            except ValueError:
+                print("Cloud masks could not be applied.")
+                pass
         
         # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
         if(tmask_ds):
@@ -605,18 +649,16 @@ def runByTile(key, num_bands, args):
     input_ds = []
     cloud_ds = []
     tmask_ds = []
+    
+    dc = datacube.Datacube()
 
     for product in input_products:
-
-        dc = datacube.Datacube()
 
         # Create the GridWorkflow object for this product
         curr_gw = GridWorkflow(dc.index, product=product)
 
         # Get the list of tiles (one for each time point) for this product
         tile_list = curr_gw.list_tiles(product=product, cell_index=key)
-
-        dc.close()
 
         # Retrieve the specified pixel for each tile in the list
         for tile_index, tile in tile_list.items():
@@ -628,16 +670,12 @@ def runByTile(key, num_bands, args):
     if(args.tmask_products): # If tmask should be used to screen for outliers
         
         for product in args.tmask_products:
-            
-            dc = datacube.Datacube()
-            
+                        
             # Create the GridWorkflow object for this product
             curr_gw = GridWorkflow(dc.index, product=product)
             
             # Get the list of tiles (one for each time point) for this product
-            tile_list = curr_gw.list_tiles(product=product, cell_index=key)
-            
-            dc.close()
+            tile_list = curr_gw.list_tiles(product=product, cell_index=key)    
             
             # Retrieve the specified pixel for each tile in the list
             for tile_index, tile in tile_list.items():
@@ -650,23 +688,21 @@ def runByTile(key, num_bands, args):
         
         for product in args.cloud_products:
             
-            dc = datacube.Datacube()
-            
             # Create the GridWorkflow object for this product
             curr_gw = GridWorkflow(dc.index, product=product)
             
             # Get the list of tiles (one for each time point) for this product
             tile_list = curr_gw.list_tiles(product=product, cell_index=key)
-            
-            dc.close()
-            
+                        
             # Retrieve the specified pixel(s) for each tile in the list
             for tile_index, tile in tile_list.items():
                 dataset = curr_gw.load(tile[0:1, min_y:max_y, min_x:max_x], measurements=['cloud_mask'])
                 
                 if(dataset.variables):
                     cloud_ds.append(dataset)
-                                              
+                    
+    dc.close()
+                                          
     if(input_ds): # Check that there is actually some input data
                 
         # Tidy up input data
@@ -762,6 +798,7 @@ def runAll(num_bands, args):
     for key in keys:
 
         input_ds = []
+        cloud_ds = []
         tmask_ds = []
 
         for product in input_products:
@@ -793,6 +830,22 @@ def runAll(num_bands, args):
     
                     if(dataset.variables):
                         tmask_ds.append(dataset)
+                        
+        if(args.cloud_products):
+            
+            for product in args.cloud_products:
+                
+                gw = GridWorkflow(dc.index, product=product)
+
+                # Get the list of tiles (one for each time point) for this product
+                tile_list = gw.list_tiles(product=product, cell_index=key)
+    
+                # Load all tiles
+                for tile_index, tile in tile_list.items():
+                    dataset = gw.load(tile, measurements=['cloud_mask'])
+    
+                    if(dataset.variables):
+                        cloud_ds.append(dataset)                        
                        
         dc.close()
         
@@ -801,6 +854,19 @@ def runAll(num_bands, args):
             # Tidy up input data
             input_data = xr.concat(input_ds, dim='time')
             input_data = mask_invalid_data(input_data)
+            
+            if(cloud_ds):
+                cloud_masks = xr.concat(cloud_ds, dim='time')
+                
+                # Data must be sorted for this to work
+                cloud_masks  = cloud_masks.sortby('time')
+                input_data = input_data.sortby('time')
+                
+                try:
+                    input_data = input_data.where(cloud_masks.cloud_mask == 0)
+                except ValueError:
+                    print("Cloud masks could not be applied.")
+                    pass
             
             # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
             if(tmask_ds):

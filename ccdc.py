@@ -138,6 +138,9 @@ def doTmask(input_ts, tmask_ts):
                
         else:
            print("Input dataset and Tmask dataset do not match.")
+           
+           print(input_ts[:,0])
+           print(tmask_ts[:,0])
             
     return input_ts            
 
@@ -529,7 +532,7 @@ def runOnArea(num_bands, args):
         input_data = mask_invalid_data(input_data)
         
         # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
-        if(len(tmask_ds) > 0):
+        if(tmask_ds):
                 
             tmask_data = xr.concat(tmask_ds, dim='time')
             tmask_data = mask_invalid_data(tmask_data)
@@ -600,6 +603,7 @@ def runByTile(key, num_bands, args):
     min_y, max_y = args.tile_y_min, args.tile_y_max
 
     input_ds = []
+    cloud_ds = []
     tmask_ds = []
 
     for product in input_products:
@@ -641,15 +645,49 @@ def runByTile(key, num_bands, args):
                 
                 if(dataset.variables):
                     tmask_ds.append(dataset)
+                    
+    if(args.cloud_products):
+        
+        for product in args.cloud_products:
+            
+            dc = datacube.Datacube()
+            
+            # Create the GridWorkflow object for this product
+            curr_gw = GridWorkflow(dc.index, product=product)
+            
+            # Get the list of tiles (one for each time point) for this product
+            tile_list = curr_gw.list_tiles(product=product, cell_index=key)
+            
+            dc.close()
+            
+            # Retrieve the specified pixel(s) for each tile in the list
+            for tile_index, tile in tile_list.items():
+                dataset = curr_gw.load(tile[0:1, min_y:max_y, min_x:max_x], measurements=['cloud_mask'])
                 
-    if(len(input_ds) > 0): # Check that there is actually some input data
+                if(dataset.variables):
+                    cloud_ds.append(dataset)
+                                              
+    if(input_ds): # Check that there is actually some input data
                 
         # Tidy up input data
         input_data = xr.concat(input_ds, dim='time')
         input_data = mask_invalid_data(input_data)
         
+        if(cloud_ds):
+            cloud_masks = xr.concat(cloud_ds, dim='time')
+            
+            # Data must be sorted for this to work
+            cloud_masks  = cloud_masks.sortby('time')
+            input_data = input_data.sortby('time')
+            
+            try:
+                input_data = input_data.where(cloud_masks.cloud_mask == 0)
+            except ValueError:
+                print("Cloud masks could not be applied.")
+                pass
+              
         # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
-        if(len(tmask_ds) > 0):
+        if(tmask_ds):
                 
             tmask_data = xr.concat(tmask_ds, dim='time')
             tmask_data = mask_invalid_data(tmask_data)
@@ -758,14 +796,14 @@ def runAll(num_bands, args):
                        
         dc.close()
         
-        if(len(input_ds) > 0): # Check that there is actually some input data
+        if(input_ds): # Check that there is actually some input data
             
             # Tidy up input data
             input_data = xr.concat(input_ds, dim='time')
             input_data = mask_invalid_data(input_data)
             
             # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
-            if(len(tmask_ds) > 0):
+            if(tmask_ds):
                 
                 tmask_data = xr.concat(tmask_ds, dim='time')
                 tmask_data = mask_invalid_data(tmask_data)
@@ -912,6 +950,7 @@ if __name__ == "__main__":
     parser.add_argument('-ot', '--outtype', choices=['plot', 'csv'], default='csv', help="Specifies the format of the output data. Either a plot or a CSV file will be produced for each pixel.")
     parser.add_argument('-ip', '--input_products', nargs='+', help="The product(s) to use for change detection.")    
     parser.add_argument('-tp', '--tmask_products', nargs='+', help="The top-of-atmosphere reflectance product(s) to use for Tmask screening. If no products are specified no screening will be applied.")
+    parser.add_argument('-clouds', '--cloud_products', nargs='+', help="The product(s) to use for cloud masking. If not specified, the data is assumes to already be masked.")    
     parser.add_argument('-i', '--re_init', type=int, default=1, help="The number of new observations added to a model before the model is refitted.")
     parser.add_argument('-p', '--num_procs', type=int, default=1, help="The number of processes to use.")
     parser.add_argument('-s', '--save_models', type=bool, default=False, help="Whether models should be pickled.")

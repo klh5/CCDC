@@ -80,6 +80,9 @@ def transformToArray(dataset_to_transform):
     
     for var in dataset_to_transform.data_vars:
         ds_to_array = np.hstack((ds_to_array, dataset_to_transform[var].values.reshape(-1, 1)))
+        
+    # Remove NaNs and sort by datetime    
+    ds_to_array = tidyData(ds_to_array)
 
     return ds_to_array
 
@@ -108,18 +111,26 @@ def writeOutPrediction(output_file, end_date):
             row.append(prediction)
             
         writer.writerow(row)
+        
+def tidyData(pixel_ts):
+    
+    """Takes a single pixel time series, removes NaN values, and sorts by date."""
+       
+    # Remove NaNs
+    pixel_nan_mask = np.any(np.isnan(pixel_ts), axis=1)
+    pixel_ts = pixel_ts[~pixel_nan_mask]
+    
+    # Sort by date
+    pixel_ts = pixel_ts[np.argsort(pixel_ts[:,0])]
+                                              
+    return pixel_ts        
        
 def doTmask(input_ts, tmask_ts):
     
     """"Removes outliers from the input dataset using Tmask if possible."""
     
-    # Transform TOA data into a Numpy array
-    tmask_ts = transformToArray(tmask_ts)
-    
     if(tmask_ts.shape[1] == 4): # Tmask data should always have 4 columns
-    
-        tmask_ts = tidyData(tmask_ts)
-         
+             
         # Both datasets need to contain the same observations
         if(np.array_equal(input_ts[:,0], tmask_ts[:,0])):
              
@@ -273,19 +284,6 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
     
     # No change detected, end of data reached
     return []
-
-def tidyData(pixel_ts):
-    
-    """Takes a single pixel time series, removes NaN values, and sorts by date."""
-    
-    # Remove NaNs
-    pixel_nan_mask = np.any(np.isnan(pixel_ts), axis=1)
-    pixel_ts = pixel_ts[~pixel_nan_mask]
-    
-    # Sort by date
-    pixel_ts = pixel_ts[np.argsort(pixel_ts[:,0])]
-                                              
-    return pixel_ts
     
 def runCCDC(input_data, num_bands, output_file, args):
 
@@ -394,19 +392,27 @@ def runCCDC(input_data, num_bands, output_file, args):
                 pkl_file = "{}_{}_{}_{}.pkl".format(output_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), model_num)
                 joblib.dump(model, pkl_file) 
                              
+def loadSubset(dc, product, bands, new_point_lat, new_point_long):
+    
+    ds = []
+    
+    dataset = dc.load(product=product, measurements=bands, lat=(new_point_lat), lon=(new_point_long), group_by='solar_day')
 
+    if(dataset.variables):
+        ds.append(dataset) 
+        
+    return ds
+    
 def runOnSubset(num_bands, args):
 
     """If the user chooses to run the algorithm on a random subsample of the data, this function is called.
         This function creates a polygon shape from the lat/long points provided by the user. It then selects
         random points from within this shape and runs the algorithm on those points. This is quite slow because 
-        each point has to be loaded seperately."""
+        each point is loaded seperately."""
         
     # Calculate the right number of columns to be returned from the data cube
     input_num_cols = num_bands + 1
     
-    input_products = args.input_products
-
     # Set some spatial boundaries for the data 
     boundary = ogr.Geometry(ogr.wkbLinearRing)
     boundary.AddPoint(args.lowerlat, args.lowerlon) 
@@ -443,32 +449,20 @@ def runOnSubset(num_bands, args):
                 tmask_ds = []
 
                 dc = datacube.Datacube()
+                
+                input_ds = loadSubset(dc, args.input_products, args.bands, new_point_lat, new_point_long)
 
-                for product in input_products:
-                    dataset = dc.load(product=product, measurements=args.bands, lat=(new_point_lat), lon=(new_point_long))
-
-                    if(dataset.variables):
-                        input_ds.append(dataset)  
-                        
-                if(args.tmask_products):
+                if(len(input_ds) == len(args.input_products)):
                     
-                    for product in args.tmask_products:
-                        dataset = dc.load(product=product, measurements=['green', 'nir', 'swir1'], lat=(new_point_lat), lon=(new_point_long))
-
-                        if(dataset.variables):
-                            tmask_ds.append(dataset)
+                    if(args.tmask_products):
+                        
+                        tmask_ds = loadSubset(dc, args.tmask_products, ['green', 'nir', 'swir1'], new_point_lat, new_point_long)
                             
-                if(args.cloud_products):
-                    
-                    for product in args.cloud_products:
-                        dataset = dc.load(product=product, measurements=['cloud_mask'], lat=(new_point_lat), lon=(new_point_long))
-
-                        if(dataset.variables):
-                            cloud_ds.append(dataset)
-                             
-                dc.close()
+                    if(args.cloud_products):
                         
-                if(len(input_ds) == len(input_products)):
+                        cloud_ds = loadSubset(dc, args.cloud_products, ['cloud_mask'], new_point_lat, new_point_long)
+                                                
+                    dc.close()
                     
                     # Tidy up input data
                     input_data = xr.concat(input_ds, dim='time')
@@ -476,16 +470,6 @@ def runOnSubset(num_bands, args):
                     
                     if(cloud_ds):
                         cloud_masks = xr.concat(cloud_ds, dim='time')
-                        
-                        # Data must be sorted for this to work
-                        cloud_masks  = cloud_masks.sortby('time')
-                        input_data = input_data.sortby('time')
-                        
-                        try:
-                            input_data = input_data.where(cloud_masks.cloud_mask == 0)
-                        except ValueError:
-                            print("Cloud masks could not be applied.")
-                            pass
                     
                     # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
                     if(tmask_ds):
@@ -493,15 +477,19 @@ def runOnSubset(num_bands, args):
                         tmask_data = xr.concat(tmask_ds, dim='time')
                         tmask_data = mask_invalid_data(tmask_data)
                 
-                    input_data = transformToArray(input_data)
-                    
-                    input_data = tidyData(input_data)
+                    input_data = transformToArray(input_data)                   
 
                     if(input_data.shape[1] == input_num_cols):                       
                         
-                        if(tmask_ds > 0):
-                                                                                       
-                            input_data = doTmask(input_data, tmask_data)
+                        if(cloud_ds):                      
+                            cloud_masks = transformToArray(cloud_masks)                         
+                            cloud_masks = cloud_masks[np.isin(cloud_masks[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data      
+                            input_data = input_data[cloud_masks[:,1] == 0] # Do masking (0 value is clear)
+                                      
+                        if(tmask_ds):            
+                            tmask_data = transformToArray(tmask_data)         
+                            tmask_data = tmask_data[np.isin(tmask_data[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data
+                            input_data = doTmask(input_data, tmask_data) # Use Tmask to further screen the input data
                            
                         x_coord = "{0:.6f}".format(new_point.GetX())
                         y_coord = "{0:.6f}".format(new_point.GetX())
@@ -512,52 +500,50 @@ def runOnSubset(num_bands, args):
                         runCCDC(input_data, num_bands, output_file, args)
                         curr_points += 1
 
+def loadArea(products, dc, bands, lowerlat, upperlat, lowerlon, upperlon):
+    
+    ds = []
+    
+    for product in products:
+        dataset = dc.load(product=product, measurements=bands, lat=(lowerlat, upperlat), lon=(lowerlon, upperlon), group_by='solar_day')
+        
+        if(dataset.variables):
+            ds.append(dataset)
+            
+    return ds
+    
 def runOnArea(num_bands, args):
 
     """If the user chooses to run the algorithm on the whole of the specified area, this function is called.
     This function will load the whole area specified by the user, and run the algorithm on each pixel."""
     
     # Calculate the right number of columns to be returned from the data cube
-    input_num_cols = num_bands + 1
-    
-    input_products = args.input_products
+    input_num_cols = num_bands + 1    
     
     input_ds = []
-    cloud_ds =[]
     tmask_ds = []
+    cloud_ds = []
     
     num_processes = args.num_procs
     
     processes = [] 
 
     dc = datacube.Datacube()
-
-    for product in input_products:
-        dataset = dc.load(product=product, measurements=args.bands, lat=(args.lowerlat, args.upperlat), lon=(args.lowerlon, args.upperlon))
-        
-        if(dataset.variables):
-            input_ds.append(dataset)
-            
-    if(args.tmask_products):
-        
-        for product in args.tmask_products:
-            dataset = dc.load(product=product, measurements=['green', 'nir', 'swir1'], lat=(args.lowerlat, args.upperlat), lon=(args.lowerlon, args.upperlon))
-        
-            if(dataset.variables):
-                tmask_ds.append(dataset)
-                
-    if(args.cloud_products):
-        
-        for product in args.cloud_products:
-            dataset = dc.load(product=product, measurements=['cloud_mask'], lat=(args.lowerlat, args.upperlat), lon=(args.lowerlon, args.upperlon))
-        
-            if(dataset.variables):
-                cloud_ds.append(dataset)            
-            
-    dc.close()
     
-    if(len(input_ds) == len(input_products)):      
-        
+    input_ds = loadArea(args.input_products, dc, args.bands, args.lowerlat, args.upperlat, args.lowerlon, args.upperlon)
+
+    if(len(input_ds) == len(args.input_products)):
+  
+        if(args.tmask_products):
+            
+            tmask_ds = loadArea(args.tmask_products, dc, ['green', 'nir', 'swir1'], args.lowerlat, args.upperlat, args.lowerlon, args.upperlon)
+                      
+        if(args.cloud_products):
+            
+            cloud_ds = loadArea(args.cloud_products, dc, ['cloud_mask'], args.lowerlat, args.upperlat, args.lowerlon, args.upperlon)            
+            
+        dc.close()
+             
         # Tidy up input data
         input_data = xr.concat(input_ds, dim='time')
         input_data = mask_invalid_data(input_data)
@@ -565,22 +551,10 @@ def runOnArea(num_bands, args):
         if(cloud_ds):
             cloud_masks = xr.concat(cloud_ds, dim='time')
             
-            # Data must be sorted for this to work
-            cloud_masks  = cloud_masks.sortby('time')
-            input_data = input_data.sortby('time')
-            
-            try:
-                input_data = input_data.where(cloud_masks.cloud_mask == 0)
-            except ValueError:
-                print("Cloud masks could not be applied.")
-                pass
-        
-        # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
         if(tmask_ds):
-                
             tmask_data = xr.concat(tmask_ds, dim='time')
             tmask_data = mask_invalid_data(tmask_data)
-
+            
         for i in range(len(input_data.x)):
             for j in range(len(input_data.y)):
                 
@@ -589,17 +563,24 @@ def runOnArea(num_bands, args):
                 x_val = str(float(input_ts.x))
                 y_val = str(float(input_ts.x))
        
-                input_ts = transformToArray(input_ts)
-                
-                input_ts = tidyData(input_ts)
+                input_ts = transformToArray(input_ts)               
     
                 if(input_ts.shape[1] == input_num_cols):
                     
-                    if(len(tmask_ds) > 0):
-                    
-                        tmask_ts = tmask_data.isel(x=i, y=j)                       
-                        input_ts = doTmask(input_ts, tmask_ts)
+                    if(cloud_ds):                      
+                        cloud_ts = cloud_masks.isel(x=i, y=j) # Get cloud mask values through time for this pixel
                         
+                        cloud_ts = transformToArray(cloud_ts)                         
+                        cloud_ts = cloud_ts[np.isin(cloud_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data      
+                        input_ts = input_ts[cloud_ts[:,1] == 0] # Do masking (0 value is clear)
+                                      
+                    if(tmask_ds):            
+                        tmask_ts = tmask_data.isel(x=i, y=j)
+                        
+                        tmask_ts = transformToArray(tmask_ts)         
+                        tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
+                        input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data
+                          
                     output_coords = "{}_{}".format(x_val, y_val)                                                                      
                     output_file = os.path.join(args.outdir, output_coords)
                     
@@ -627,6 +608,27 @@ def runOnArea(num_bands, args):
     # Keep running until all processes have finished
     for p in processes:
         p.join()
+        
+def loadByTile(products, dc, key, min_y, max_y, min_x, max_x, bands):
+    
+    ds = []
+    
+    for product in products:
+
+        # Create the GridWorkflow object for this product
+        curr_gw = GridWorkflow(dc.index, product=product)
+    
+        # Get the list of tiles (one for each time point) for this product
+        tile_list = curr_gw.list_tiles(product=product, cell_index=key, group_by='solar_day')
+    
+        # Retrieve the specified pixel for each tile in the list
+        for tile_index, tile in tile_list.items():
+            dataset = curr_gw.load(tile[0:1, min_y:max_y, min_x:max_x], measurements=bands)
+    
+            if(dataset.variables):
+                ds.append(dataset)
+                
+    return ds                
 
 def runByTile(key, num_bands, args):
 
@@ -639,92 +641,36 @@ def runByTile(key, num_bands, args):
     
     num_processes = args.num_procs
     processes = []
-    
-    input_products = args.input_products
-       
-    min_x, max_x = args.tile_x_min, args.tile_x_max
-    
-    min_y, max_y = args.tile_y_min, args.tile_y_max
-
-    input_ds = []
-    cloud_ds = []
-    tmask_ds = []
-    
+              
     dc = datacube.Datacube()
+    
+    input_ds = []
+    tmask_ds = []
+    cloud_ds = []
 
-    for product in input_products:
-
-        # Create the GridWorkflow object for this product
-        curr_gw = GridWorkflow(dc.index, product=product)
-
-        # Get the list of tiles (one for each time point) for this product
-        tile_list = curr_gw.list_tiles(product=product, cell_index=key)
-
-        # Retrieve the specified pixel for each tile in the list
-        for tile_index, tile in tile_list.items():
-            dataset = curr_gw.load(tile[0:1, min_y:max_y, min_x:max_x], measurements=args.bands)
-
-            if(dataset.variables):
-                input_ds.append(dataset)
-                
-    if(args.tmask_products): # If tmask should be used to screen for outliers
-        
-        for product in args.tmask_products:
-                        
-            # Create the GridWorkflow object for this product
-            curr_gw = GridWorkflow(dc.index, product=product)
-            
-            # Get the list of tiles (one for each time point) for this product
-            tile_list = curr_gw.list_tiles(product=product, cell_index=key)    
-            
-            # Retrieve the specified pixel for each tile in the list
-            for tile_index, tile in tile_list.items():
-                dataset = curr_gw.load(tile[0:1, min_y:max_y, min_x:max_x], measurements=['green', 'nir', 'swir1'])
-                
-                if(dataset.variables):
-                    tmask_ds.append(dataset)
-                    
-    if(args.cloud_products):
-        
-        for product in args.cloud_products:
-            
-            # Create the GridWorkflow object for this product
-            curr_gw = GridWorkflow(dc.index, product=product)
-            
-            # Get the list of tiles (one for each time point) for this product
-            tile_list = curr_gw.list_tiles(product=product, cell_index=key)
-                        
-            # Retrieve the specified pixel(s) for each tile in the list
-            for tile_index, tile in tile_list.items():
-                dataset = curr_gw.load(tile[0:1, min_y:max_y, min_x:max_x], measurements=['cloud_mask'])
-                
-                if(dataset.variables):
-                    cloud_ds.append(dataset)
-                    
-    dc.close()
-                                          
+    input_ds = loadByTile(args.input_products, dc, key, args.tile_y_min, args.tile_y_max, args.tile_x_min, args.tile_x_max, args.bands)                    
+                                                 
     if(input_ds): # Check that there is actually some input data
+        
+        if(args.tmask_products): # If tmask should be used to screen for outliers
+        
+            tmask_ds = loadByTile(args.tmask_products, dc, key, args.tile_y_min, args.tile_y_max, args.tile_x_min, args.tile_x_max, ['green', 'nir', 'swir1']) 
+             
+        if(args.cloud_products):
+        
+            cloud_ds = loadByTile(args.cloud_products, dc, key, args.tile_y_min, args.tile_y_max, args.tile_x_min, args.tile_x_max, ['cloud_mask']) 
                 
+        dc.close()
+        
         # Tidy up input data
         input_data = xr.concat(input_ds, dim='time')
         input_data = mask_invalid_data(input_data)
-        
-        if(cloud_ds):
+               
+        if(cloud_ds):            
             cloud_masks = xr.concat(cloud_ds, dim='time')
-            
-            # Data must be sorted for this to work
-            cloud_masks  = cloud_masks.sortby('time')
-            input_data = input_data.sortby('time')
-            
-            try:
-                input_data = input_data.where(cloud_masks.cloud_mask == 0)
-            except ValueError:
-                print("Cloud masks could not be applied.")
-                pass
-              
+                          
         # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
-        if(tmask_ds):
-                
+        if(tmask_ds):               
             tmask_data = xr.concat(tmask_ds, dim='time')
             tmask_data = mask_invalid_data(tmask_data)
                     
@@ -736,20 +682,27 @@ def runByTile(key, num_bands, args):
                 x_val = str(float(input_ts.x))
                 y_val = str(float(input_ts.y))
                 
-                input_ts = transformToArray(input_ts)
-                                
-                input_ts = tidyData(input_ts)
-            
+                input_ts = transformToArray(input_ts) # Transform to Numpy array, sort and remove NaNs
+                
                 if(input_ts.shape[1] == input_num_cols):
                     
-                    if(len(tmask_ds) > 0):
-                    
-                        tmask_ts = tmask_data.isel(x=i, y=j)                       
-                        input_ts = doTmask(input_ts, tmask_ts)
+                    if(cloud_ds):                      
+                        cloud_ts = cloud_masks.isel(x=i, y=j) # Get cloud mask values through time for this pixel
+                        
+                        cloud_ts = transformToArray(cloud_ts)                         
+                        cloud_ts = cloud_ts[np.isin(cloud_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data      
+                        input_ts = input_ts[cloud_ts[:,1] == 0] # Do masking (0 value is clear)
+                                      
+                    if(tmask_ds):            
+                        tmask_ts = tmask_data.isel(x=i, y=j)
+                        
+                        tmask_ts = transformToArray(tmask_ts)         
+                        tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
+                        input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data
                     
                     output_coords = "{}_{}".format(x_val, y_val)                                                                      
                     output_file = os.path.join(args.outdir, output_coords)
-                    
+                                       
                     # Block until a core becomes available
                     while(True):
     
@@ -774,6 +727,26 @@ def runByTile(key, num_bands, args):
     # Keep running until all processes have finished
     for p in processes:
         p.join()
+        
+def loadAll(products, dc, key, bands):
+    
+    ds = []
+    
+    for product in products:
+
+        gw = GridWorkflow(dc.index, product=product)
+    
+        # Get the list of tiles (one for each time point) for this product
+        tile_list = gw.list_tiles(product=product, cell_index=key, group_by='solar_day')
+    
+        # Load all tiles
+        for tile_index, tile in tile_list.items():
+            dataset = gw.load(tile, measurements=bands)
+    
+            if(dataset.variables):
+                ds.append(dataset)
+    
+    return ds
 
 def runAll(num_bands, args):
 
@@ -784,90 +757,43 @@ def runAll(num_bands, args):
     
     num_processes = args.num_procs
     processes = []
-    
-    input_products = args.input_products
 
     dc = datacube.Datacube()
 
     # Create Gridworkflow object for most recent dataset
-    gw = GridWorkflow(dc.index, product=input_products[-1])
+    gw = GridWorkflow(dc.index, product=args.input_products[-1])
 
     # Get list of cell keys for most recent dataset
-    keys = list(gw.list_cells(product=input_products[-1], lat=(args.lowerlat, args.upperlat), lon=(args.lowerlon, args.upperlon)).keys())
+    keys = list(gw.list_cells(product=args.input_products[-1], lat=(args.lowerlat, args.upperlat), lon=(args.lowerlon, args.upperlon)).keys())
 
     for key in keys:
 
         input_ds = []
-        cloud_ds = []
         tmask_ds = []
+        cloud_ds = []
 
-        for product in input_products:
-
-            gw = GridWorkflow(dc.index, product=product)
-
-            # Get the list of tiles (one for each time point) for this product
-            tile_list = gw.list_tiles(product=product, cell_index=key)
-
-            # Load all tiles
-            for tile_index, tile in tile_list.items():
-                dataset = gw.load(tile, measurements=args.bands)
-
-                if(dataset.variables):
-                    input_ds.append(dataset)
-                    
-        if(args.tmask_products):
-            
-            for product in args.tmask_products:
-                
-                gw = GridWorkflow(dc.index, product=product)
-
-                # Get the list of tiles (one for each time point) for this product
-                tile_list = gw.list_tiles(product=product, cell_index=key)
-    
-                # Load all tiles
-                for tile_index, tile in tile_list.items():
-                    dataset = gw.load(tile, measurements=['green', 'nir', 'swir1'])
-    
-                    if(dataset.variables):
-                        tmask_ds.append(dataset)
-                        
-        if(args.cloud_products):
-            
-            for product in args.cloud_products:
-                
-                gw = GridWorkflow(dc.index, product=product)
-
-                # Get the list of tiles (one for each time point) for this product
-                tile_list = gw.list_tiles(product=product, cell_index=key)
-    
-                # Load all tiles
-                for tile_index, tile in tile_list.items():
-                    dataset = gw.load(tile, measurements=['cloud_mask'])
-    
-                    if(dataset.variables):
-                        cloud_ds.append(dataset)                        
-                       
-        dc.close()
+        input_ds = loadAll(args.input_products, dc, key, args.bands)
         
-        if(input_ds): # Check that there is actually some input data
-            
+        if(input_ds):
+                    
+            if(args.tmask_products):
+                
+                tmask_ds = loadAll(args.tmask_products, dc, key, ['green', 'nir', 'swir1'])
+                
+            if(args.cloud_products):
+                
+                cloud_ds = loadAll(args.cloud_products, dc, key, ['cloud_mask'])
+                                                                   
+            dc.close()
+        
             # Tidy up input data
             input_data = xr.concat(input_ds, dim='time')
             input_data = mask_invalid_data(input_data)
             
             if(cloud_ds):
+                
                 cloud_masks = xr.concat(cloud_ds, dim='time')
-                
-                # Data must be sorted for this to work
-                cloud_masks  = cloud_masks.sortby('time')
-                input_data = input_data.sortby('time')
-                
-                try:
-                    input_data = input_data.where(cloud_masks.cloud_mask == 0)
-                except ValueError:
-                    print("Cloud masks could not be applied.")
-                    pass
-            
+                        
             # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
             if(tmask_ds):
                 
@@ -883,17 +809,26 @@ def runAll(num_bands, args):
                     x_val = str(float(input_ts.x))
                     y_val = str(float(input_ts.y))
 
-                    input_ts = transformToArray(input_ts) # Transform the time series into a numpy array
-                    
-                    input_ts = tidyData(input_ts)
+                    input_ts = transformToArray(input_ts) # Transform the time series into a numpy array                    
                                               
                     if(input_ts.shape[1] == input_num_cols):
                         
-                        if(len(tmask_ds) > 0):
-                    
+                        if(cloud_ds):
+                            
+                            cloud_ts = cloud_masks.isel(x=i, y=j) # Get cloud mask values through time for this pixel
+                            
+                            cloud_ts = transformToArray(cloud_ts)                         
+                            cloud_ts = cloud_ts[np.isin(cloud_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data      
+                            input_ts = input_ts[cloud_ts[:,1] == 0] # Do masking (0 value is clear)
+                            
+                        if(tmask_ds):
+                            
                             tmask_ts = tmask_data.isel(x=i, y=j)
-                            input_ts = doTmask(input_ts, tmask_ts)    
-                              
+                            
+                            tmask_ts = transformToArray(tmask_ts)         
+                            tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
+                            input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data    
+                                                        
                         output_coords = "{}_{}".format(x_val, y_val)                                                                      
                         output_file = os.path.join(args.outdir, output_coords)
                         
@@ -965,7 +900,7 @@ def main(args):
             print("Date to predict must be specified if output mode is predictive.")
             sys.exit()
                
-    if(args.lowerlat and args.upperlat and args.lowerlon and args.upperlon):
+    if(args.lowerlat is not None and args.upperlat is not None and args.lowerlon is not None and args.upperlon is not None):
 
         if(args.process_mode == "subsample"):
             runOnSubset(num_bands, args)
@@ -979,17 +914,17 @@ def main(args):
         else:
             print("Lat/long boundaries were provided, but process_mode was not subsample, area, or all.")
 
-    elif(len(args.key) > 1 and args.tile_x_min and args.tile_x_max and args.tile_y_min and args.tile_y_max):
+    elif(len(args.key) > 1 and args.tile_x_min is not None and args.tile_x_max is not None and args.tile_y_min is not None and args.tile_y_max is not None):
 
         if(args.process_mode == "tile"):
             key = tuple(args.key)
             runByTile(key, num_bands, args)
 
         else:
-            print("Key/pixel details were provided, but process_mode was not single pixel.")
+            print("Key/pixel details were provided, but process_mode was not tile.")
 
     else:
-        if(args.process_mode == "csv" and args.csv_file):
+        if(args.process_mode == "csv" and args.csv_file is not None):
             runOnCSV(num_bands, args)
             
         else:

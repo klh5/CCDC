@@ -115,22 +115,33 @@ def writeOutPrediction(output_file, end_date):
 def tidyData(pixel_ts):
     
     """Takes a single pixel time series, removes NaN values, and sorts by date."""
-       
+     
     # Remove NaNs
     pixel_nan_mask = np.any(np.isnan(pixel_ts), axis=1)
     pixel_ts = pixel_ts[~pixel_nan_mask]
     
     # Sort by date
     pixel_ts = pixel_ts[np.argsort(pixel_ts[:,0])]
-                                              
+                                             
     return pixel_ts        
        
 def doTmask(input_ts, tmask_ts):
     
     """"Removes outliers from the input dataset using Tmask if possible."""
+       
+#    mask = np.in1d(input_ts[:,0], tmask_ts[:,0])
+#    
+#    extra = input_ts[~mask]
+#    extra = extra[:,0:4]
+#    
+#    tmask_ts = np.vstack((tmask_ts, extra))
+#    
+#    tmask_ts = tmask_ts[np.argsort(tmask_ts[:,0])]
+    
+    
     
     if(tmask_ts.shape[1] == 4): # Tmask data should always have 4 columns
-             
+          
         # Both datasets need to contain the same observations
         if(np.array_equal(input_ts[:,0], tmask_ts[:,0])):
              
@@ -661,7 +672,7 @@ def runByTile(key, num_bands, args):
             cloud_ds = loadByTile(args.cloud_products, dc, key, args.tile_y_min, args.tile_y_max, args.tile_x_min, args.tile_x_max, ['cloud_mask']) 
                 
         dc.close()
-        
+                      
         # Tidy up input data
         input_data = xr.concat(input_ds, dim='time')
         input_data = mask_invalid_data(input_data)
@@ -673,7 +684,7 @@ def runByTile(key, num_bands, args):
         if(tmask_ds):               
             tmask_data = xr.concat(tmask_ds, dim='time')
             tmask_data = mask_invalid_data(tmask_data)
-                    
+            
         for i in range(len(input_data.x)):
             for j in range(len(input_data.y)):
                 
@@ -683,8 +694,8 @@ def runByTile(key, num_bands, args):
                 y_val = str(float(input_ts.y))
                 
                 input_ts = transformToArray(input_ts) # Transform to Numpy array, sort and remove NaNs
-                
-                if(input_ts.shape[1] == input_num_cols):
+                              
+                if(input_ts.shape[1] == input_num_cols):                 
                     
                     if(cloud_ds):                      
                         cloud_ts = cloud_masks.isel(x=i, y=j) # Get cloud mask values through time for this pixel
@@ -696,7 +707,8 @@ def runByTile(key, num_bands, args):
                     if(tmask_ds):            
                         tmask_ts = tmask_data.isel(x=i, y=j)
                         
-                        tmask_ts = transformToArray(tmask_ts)         
+                        tmask_ts = transformToArray(tmask_ts)    
+
                         tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
                         input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data
                     
@@ -753,7 +765,7 @@ def runAll(num_bands, args):
     """Run on all tiles in the specified datasets/area. Keys are based on the last dataset listed."""
 
     # Calculate the right number of columns to be returned from the data cube
-    input_num_cols = num_bands + 1
+    input_num_cols = num_bands + 1    
     
     num_processes = args.num_procs
     processes = []

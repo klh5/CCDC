@@ -61,7 +61,5 @@ class RLMRemoveOutliers(object):
         return rlm_result, delta
     
     def dropOutliers(self):
-        
-        """Goes through each observation and makes a list of outliers"""
-        
+              
         self.sref_data = self.sref_data[(self.toa_data[:,4] < 40) & ((self.toa_data[:,5] > -40) | (self.toa_data[:,6] > -40))]

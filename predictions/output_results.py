@@ -144,7 +144,7 @@ def main(args):
     
             dc = datacube.Datacube()
            
-            real_data = dc.load(product=args.product, measurements=bands, time=(start_date, end_date), x=(x_min, x_max), y=(y_min, y_max), crs=epsg_code, output_crs=epsg_code, resolution=(args.cell_size, -args.cell_size))
+            real_data = dc.load(product=args.product, measurements=bands, time=(start_date, end_date), x=(x_min, x_max), y=(y_min, y_max), crs=epsg_code, output_crs=epsg_code, resolution=(-args.cell_size, args.cell_size))
     
             if(real_data.variables):
                

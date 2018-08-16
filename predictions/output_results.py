@@ -79,7 +79,7 @@ def main(args):
     to_df = pd.DataFrame(rows).set_index(['y', 'x'])
 
     dataset = xr.Dataset.from_dataframe(to_df)
-    
+
     dataset = dataset.sortby("y", ascending=False)
     
     print("Generating output...")
@@ -139,13 +139,14 @@ def main(args):
     
            dc = datacube.Datacube()
            
-           real_data = dc.load(product=args.product, measurements=bands, time=(start_date, end_date), x=(x_min, x_max), y=(y_min, y_max), crs=epsg_code, output_crs=epsg_code, resolution=(args.cell_size, -args.cell_size))
-    
+           real_data = dc.load(product=args.product, measurements=bands, time=(start_date, end_date), x=(x_min, x_max), y=(y_min, y_max), crs=epsg_code, output_crs=epsg_code, resolution=(-args.cell_size, args.cell_size))
+
+               
            if(real_data.variables):
                
                # Output KEA file for real data
-               real_file_name = "{}_real.kea".format(date)
-               
+               real_file_name = "{}_real.kea".format(date) 
+
                real_img = driver.Create(real_file_name, x_size, y_size, num_bands, 2)
                
                real_img.SetProjection(srs)

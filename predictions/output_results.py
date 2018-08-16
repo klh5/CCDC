@@ -79,7 +79,7 @@ def main(args):
     to_df = pd.DataFrame(rows).set_index(['y', 'x'])
 
     dataset = xr.Dataset.from_dataframe(to_df)
-
+    
     dataset = dataset.sortby("y", ascending=False)
     
     print("Generating output...")
@@ -126,68 +126,83 @@ def main(args):
         
     if(args.make_comparison):
         
+        # Open predicted KEA image for comparison
+        predicted_img = gdal.Open(multi_band)
+        
         aspect = x_size / y_size # Get aspect ratio for plots, since area is not always square
         
         plt.rcParams.update({'font.size': 22})
         
         if(args.product):
-                       
-           start_date = datetime.strptime(date, "%Y-%m-%d")
-           end_date = start_date + timedelta(days=1)
-           
-           epsg_code = "EPSG:{}".format(args.coord_system)
-    
-           dc = datacube.Datacube()
-           
-           real_data = dc.load(product=args.product, measurements=bands, time=(start_date, end_date), x=(x_min, x_max), y=(y_min, y_max), crs=epsg_code, output_crs=epsg_code, resolution=(-args.cell_size, args.cell_size))
-
-               
-           if(real_data.variables):
-               
-               # Output KEA file for real data
-               real_file_name = "{}_real.kea".format(date) 
-
-               real_img = driver.Create(real_file_name, x_size, y_size, num_bands, 2)
-               
-               real_img.SetProjection(srs)
-               real_img.SetGeoTransform(geo_transform)
-               
-               for band_num, var in enumerate(dataset.data_vars):      
-                   raster_band = real_img.GetRasterBand(band_num+1)
-                   raster_band.SetNoDataValue(0)
-                   raster_band.SetDescription(var)
-                   real_data[var] = real_data[var].fillna(0)
-                   band_min = np.amin(real_data[var].values)
-                   band_max = np.amax(real_data[var].values)
-                   band_mean = np.mean(real_data[var].values)
-                   band_sd = np.std(real_data[var].values)
-                   raster_band.SetStatistics(float(band_min), float(band_max), float(band_mean), float(band_sd))
-                   raster_band.WriteArray(real_data[var].values.reshape(y_size, -1))
             
-               real_img = None
+            # User has provided a Data Cube product which the real image belongs to
+
+            start_date = datetime.strptime(date, "%Y-%m-%d")
+            end_date = start_date + timedelta(days=1)
+           
+            epsg_code = "EPSG:{}".format(args.coord_system)
+    
+            dc = datacube.Datacube()
+           
+            real_data = dc.load(product=args.product, measurements=bands, time=(start_date, end_date), x=(x_min, x_max), y=(y_min, y_max), crs=epsg_code, output_crs=epsg_code, resolution=(args.cell_size, -args.cell_size))
+    
+            if(real_data.variables):
                
-               # Create difference plots and output RMSE values
+                # Output KEA file for real data
+                real_file_name = "{}_real.kea".format(date)
+               
+                real_img = driver.Create(real_file_name, x_size, y_size, num_bands, 2)
+               
+                real_img.SetProjection(srs)
+                real_img.SetGeoTransform(geo_transform)
+               
+                for band_num, var in enumerate(dataset.data_vars):      
+                    raster_band = real_img.GetRasterBand(band_num+1)
+                    raster_band.SetNoDataValue(0)
+                    raster_band.SetDescription(var)
+                    real_data[var] = real_data[var].fillna(0)
+                    band_min = np.amin(real_data[var].values)
+                    band_max = np.amax(real_data[var].values)
+                    band_mean = np.mean(real_data[var].values)
+                    band_sd = np.std(real_data[var].values)
+                    raster_band.SetStatistics(float(band_min), float(band_max), float(band_mean), float(band_sd))
+                    raster_band.WriteArray(real_data[var].values.reshape(y_size, -1))
+                   
+                real_img = None
+                          
+                # Create difference plots and output RMSE values
+               
+                real_img = gdal.Open(real_file_name)
                  
-               for var in dataset.data_vars:
-                   pred_band_data = dataset[var]
-                   real_band_data = real_data[var]
-                   
-                   difference = real_band_data - pred_band_data
-                   
-                   band_diff_name = "{}_difference".format(var)
-                   dataset[band_diff_name] = (('time', 'y', 'x'), difference)
-                   
-                   diff_plot_name = "{}_diff.png".format(var)
-                   dataset[band_diff_name].plot(aspect=aspect, size=20)
-                   plt.xticks(rotation='vertical')
-                   plt.tight_layout()
-                   plt.savefig(diff_plot_name)
-                   plt.close()
-                   
-                   band_rmse = np.sqrt(np.mean((dataset[band_diff_name].values) ** 2))
-                   print("Band {} RMSE: {}".format(var, band_rmse))
-                     
-           else:
+                for pred_band_num in range(predicted_img.RasterCount):
+                    pred_srcband = predicted_img.GetRasterBand(pred_band_num+1)
+                    pred_desc = pred_srcband.GetDescription()
+                
+                    for real_band_num in range(real_img.RasterCount):
+                         real_srcband = real_img.GetRasterBand(real_band_num+1)
+                        
+                         if(real_srcband.GetDescription().lower() == pred_desc):
+                             pred_data = np.array(pred_srcband.ReadAsArray())
+                             real_data = np.array(real_srcband.ReadAsArray())
+                            
+                             difference = np.subtract(real_data.astype(float), pred_data.astype(float))
+                            
+                             band_diff_name = "{}_difference".format(pred_desc)
+                             dataset[band_diff_name] = (('y', 'x'), difference)
+                            
+                             # Make difference plots
+                             dataset[band_diff_name].plot(aspect=aspect, size=20)
+                             plt.xticks(rotation='vertical')
+                             plt.tight_layout()
+                             diff_plot_name = "{}_diff.png".format(pred_desc)
+                             plt.savefig(diff_plot_name)
+                             plt.close()
+                        
+                             # Print RMSE
+                             band_rmse = np.sqrt(np.mean((dataset[band_diff_name].values) ** 2))
+                             print("{} RMSE is: {}".format(pred_desc, band_rmse))
+                                   
+            else:
                print("No matching image could be found from the provided product.")
                
         elif(args.real_img):
@@ -203,7 +218,6 @@ def main(args):
             subprocess.call(["gdalwarp", "-of", "kea", "-cutline", shapefile, "-crop_to_cutline", args.real_img, crop_name])
            
             real_img = gdal.Open(crop_name)
-            predicted_img = gdal.Open(multi_band)
             
             for pred_band_num in range(predicted_img.RasterCount):
                 pred_srcband = predicted_img.GetRasterBand(pred_band_num+1)
@@ -233,8 +247,8 @@ def main(args):
                         band_rmse = np.sqrt(np.mean((dataset[band_diff_name].values) ** 2))
                         print("{} RMSE is: {}".format(pred_desc, band_rmse))
             
-            real_img = None
-            predicted_img = None
+        real_img = None
+        predicted_img = None
                  
 if __name__ == "__main__":
     

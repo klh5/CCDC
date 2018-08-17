@@ -171,23 +171,7 @@ def doTmask(input_ts, tmask_ts):
                 return matched_input_ts
             
         else:
-            print("Warning: Tmask data set too incomplete for masking.")
-             
-       
-#    mask = np.in1d(input_ts[:,0], tmask_ts[:,0])
-#    
-#    extra = input_ts[~mask]
-#    extra = extra[:,0:4]
-#    
-#    tmask_ts = np.vstack((tmask_ts, extra))
-#    
-#    tmask_ts = tmask_ts[np.argsort(tmask_ts[:,0])]
-    
-    
-                
-               
-            
-         
+            print("Warning: Tmask data set too incomplete for masking.") 
 
 def initModel(pixel_data, num_bands, init_obs):
 

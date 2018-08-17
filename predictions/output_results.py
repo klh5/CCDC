@@ -16,6 +16,37 @@ from matplotlib import pyplot as plt
 from datetime import datetime
 from datetime import timedelta
 
+def compareImages(real_img, predicted_img, dataset, aspect):
+    
+    for pred_band_num in range(predicted_img.RasterCount):
+        pred_srcband = predicted_img.GetRasterBand(pred_band_num+1)
+        pred_desc = pred_srcband.GetDescription()
+        
+        for real_band_num in range(real_img.RasterCount):
+            real_srcband = real_img.GetRasterBand(real_band_num+1)
+            
+            if(real_srcband.GetDescription().lower() == pred_desc):
+                pred_data = np.array(pred_srcband.ReadAsArray())
+                real_data = np.array(real_srcband.ReadAsArray())
+                
+                difference = np.subtract(real_data.astype(float), pred_data.astype(float))
+                
+                band_diff_name = "{}_difference".format(pred_desc)
+                dataset[band_diff_name] = (('y', 'x'), difference)
+                
+                # Make difference plots
+                dataset[band_diff_name].plot(aspect=aspect, size=20)
+                plt.xticks(rotation=90)
+                plt.yticks(rotation=90)
+                plt.tight_layout()
+                diff_plot_name = "{}_diff.png".format(pred_desc)
+                plt.savefig(diff_plot_name)
+                plt.close()
+                
+                # Print RMSE
+                band_rmse = np.sqrt(np.mean((dataset[band_diff_name].values) ** 2))
+                print("{} RMSE is: {}".format(pred_desc, band_rmse))
+
 def main(args):
 
     csv_dir = args.csv_dir
@@ -81,7 +112,7 @@ def main(args):
     dataset = xr.Dataset.from_dataframe(to_df)
     
     dataset = dataset.sortby("y", ascending=False)
-    
+      
     print("Generating output...")
     
     # Create multi-band KEA file from the predictions
@@ -112,13 +143,13 @@ def main(args):
     
     for band_num, var in enumerate(dataset.data_vars):      
         raster_band = pred_raster.GetRasterBand(band_num+1)
-        raster_band.SetNoDataValue(0)
+        raster_band.SetNoDataValue(args.nodata_val)
         raster_band.SetDescription(var)
+        band_min = np.nanmin(dataset[var].values)
+        band_max = np.nanmax(dataset[var].values)
+        band_mean = np.nanmean(dataset[var].values)
+        band_sd = np.nanstd(dataset[var].values)
         dataset[var] = dataset[var].fillna(args.nodata_val)
-        band_min = np.amin(dataset[var].values)
-        band_max = np.amax(dataset[var].values)
-        band_mean = np.mean(dataset[var].values)
-        band_sd = np.std(dataset[var].values)
         raster_band.SetStatistics(band_min, band_max, band_mean, band_sd)
         raster_band.WriteArray(dataset[var].values)
         
@@ -158,13 +189,13 @@ def main(args):
                
                 for band_num, var in enumerate(dataset.data_vars):      
                     raster_band = real_img.GetRasterBand(band_num+1)
-                    raster_band.SetNoDataValue(0)
+                    raster_band.SetNoDataValue(args.nodata_val)
                     raster_band.SetDescription(var)
-                    real_data[var] = real_data[var].fillna(0)
-                    band_min = np.amin(real_data[var].values)
-                    band_max = np.amax(real_data[var].values)
-                    band_mean = np.mean(real_data[var].values)
-                    band_sd = np.std(real_data[var].values)
+                    band_min = np.nanmin(real_data[var].values)
+                    band_max = np.nanmax(real_data[var].values)
+                    band_mean = np.nanmean(real_data[var].values)
+                    band_sd = np.nanstd(real_data[var].values)
+                    real_data[var] = real_data[var].fillna(args.nodata_val)
                     raster_band.SetStatistics(float(band_min), float(band_max), float(band_mean), float(band_sd))
                     raster_band.WriteArray(real_data[var].values.reshape(y_size, -1))
                    
@@ -174,38 +205,14 @@ def main(args):
                
                 real_img = gdal.Open(real_file_name)
                  
-                for pred_band_num in range(predicted_img.RasterCount):
-                    pred_srcband = predicted_img.GetRasterBand(pred_band_num+1)
-                    pred_desc = pred_srcband.GetDescription()
-                
-                    for real_band_num in range(real_img.RasterCount):
-                         real_srcband = real_img.GetRasterBand(real_band_num+1)
-                        
-                         if(real_srcband.GetDescription().lower() == pred_desc):
-                             pred_data = np.array(pred_srcband.ReadAsArray())
-                             real_data = np.array(real_srcband.ReadAsArray())
-                            
-                             difference = np.subtract(real_data.astype(float), pred_data.astype(float))
-                            
-                             band_diff_name = "{}_difference".format(pred_desc)
-                             dataset[band_diff_name] = (('y', 'x'), difference)
-                            
-                             # Make difference plots
-                             dataset[band_diff_name].plot(aspect=aspect, size=20)
-                             plt.xticks(rotation='vertical')
-                             plt.tight_layout()
-                             diff_plot_name = "{}_diff.png".format(pred_desc)
-                             plt.savefig(diff_plot_name)
-                             plt.close()
-                        
-                             # Print RMSE
-                             band_rmse = np.sqrt(np.mean((dataset[band_diff_name].values) ** 2))
-                             print("{} RMSE is: {}".format(pred_desc, band_rmse))
-                                   
+                compareImages(real_img, predicted_img, dataset, aspect)
+                                               
             else:
                print("No matching image could be found from the provided product.")
                
         elif(args.real_img):
+            
+            # User has provided a real image to make the comparison
             
             # Name shapefile
             shapefile = "predicted.shp"
@@ -219,34 +226,9 @@ def main(args):
            
             real_img = gdal.Open(crop_name)
             
-            for pred_band_num in range(predicted_img.RasterCount):
-                pred_srcband = predicted_img.GetRasterBand(pred_band_num+1)
-                pred_desc = pred_srcband.GetDescription()
-                
-                for real_band_num in range(real_img.RasterCount):
-                    real_srcband = real_img.GetRasterBand(real_band_num+1)
-                    
-                    if(real_srcband.GetDescription().lower() == pred_desc):
-                        pred_data = np.array(pred_srcband.ReadAsArray())
-                        real_data = np.array(real_srcband.ReadAsArray())
-                        
-                        difference = np.subtract(real_data.astype(float), pred_data.astype(float))
-                        
-                        band_diff_name = "{}_difference".format(pred_desc)
-                        dataset[band_diff_name] = (('y', 'x'), difference)
-                        
-                        # Make difference plots
-                        dataset[band_diff_name].plot(aspect=aspect, size=20)
-                        plt.xticks(rotation='vertical')
-                        plt.tight_layout()
-                        diff_plot_name = "{}_diff.png".format(pred_desc)
-                        plt.savefig(diff_plot_name)
-                        plt.close()
-                        
-                        # Print RMSE
-                        band_rmse = np.sqrt(np.mean((dataset[band_diff_name].values) ** 2))
-                        print("{} RMSE is: {}".format(pred_desc, band_rmse))
+            compareImages(real_img, predicted_img, dataset, aspect)
             
+        # Close any images which have been opened    
         real_img = None
         predicted_img = None
                  

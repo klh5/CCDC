@@ -46,6 +46,9 @@ def main(args):
                         file_reader = csv.reader(data_file)
 
                         num_changes = sum(1 for row in file_reader) - 1
+                        
+                        if(num_changes == -1):
+                            num_changes = float('NaN')
                             
                         row = {'x': x_val, 'y': y_val, 'num_changes': num_changes}
                         rows.append(row)
@@ -56,10 +59,10 @@ def main(args):
     
         dataset = xr.Dataset.from_dataframe(to_df)
         
-        dataset = dataset.sortby("y", ascending=False)
+        dataset = dataset.sortby("y", ascending=False)       
         
         print("Generating plot...")
-        
+
         x_size = len(dataset.x.values)
         y_size = len(dataset.y.values)
         
@@ -115,13 +118,13 @@ def main(args):
         pred_raster.SetGeoTransform(geo_transform)
             
         raster_band = pred_raster.GetRasterBand(1)
-        raster_band.SetNoDataValue(0)
+        raster_band.SetNoDataValue(args.nodata_val)
         raster_band.SetDescription("num_changes")
+        band_min = np.nanmin(dataset['num_changes'].values)
+        band_max = np.nanmax(dataset['num_changes'].values)
+        band_mean = np.nanmean(dataset['num_changes'].values)
+        band_sd = np.nanstd(dataset['num_changes'].values)
         dataset['num_changes'] = dataset['num_changes'].fillna(args.nodata_val)
-        band_min = np.amin(dataset['num_changes'].values)
-        band_max = np.amax(dataset['num_changes'].values)
-        band_mean = np.mean(dataset['num_changes'].values)
-        band_sd = np.std(dataset['num_changes'].values)
         raster_band.SetStatistics(band_min, band_max, band_mean, band_sd)
         raster_band.WriteArray(dataset['num_changes'].values)
             
@@ -141,36 +144,12 @@ def main(args):
             crop_name = img_name.replace(".kea", "_cropped.kea")       
             subprocess.call(["gdalwarp", "-of", "kea", "-cutline", shapefile, "-crop_to_cutline", img_name, crop_name])
              
-            # Create false colour image to compare with change map
-            orig_img = gdal.Open(img_name)
+            # Draw area on to full size image
             
-            band4 = orig_img.GetRasterBand(4)
-            band5 = orig_img.GetRasterBand(5)
-            band6 = orig_img.GetRasterBand(6)
-                 
-            band4_stats = band4.GetStatistics(True, True)
-            band5_stats = band5.GetStatistics(True, True)
-            band6_stats = band6.GetStatistics(True, True)
-            
-            # Close image
-            orig_img = None
-            
-            band4_min = str(band4_stats[0])
-            band4_max = str(band4_stats[1])
-            
-            band5_min = str(band5_stats[0])
-            band5_max = str(band5_stats[1])
-            
-            band6_min = str(band6_stats[0])
-            band6_max = str(band6_stats[1])
-            
-            # Name cropped false colour file
-            false_colour_cropped = img_name.replace(".kea", "_false_colour_cropped.png")
-            
-            subprocess.call(["gdal_translate", crop_name, "-b", "6", "-b", "5", "-b", "4", "-of", "png", "-ot", "byte", "-scale_1", band6_min, band6_max, "-scale_2", band5_min, band5_max, "-scale_3", band4_min, band4_max, "-a_nodata", "255", false_colour_cropped])
-    
-            # Draw area on to full size false colour image
+            # Open cropped image
             cropped_img = gdal.Open(crop_name)
+            
+            # Get cropped image dimensions
             ulx, xres, xskew, uly, yskew, yres  = cropped_img.GetGeoTransform()
             
             lrx = ulx + (cropped_img.RasterXSize * xres)
@@ -179,7 +158,8 @@ def main(args):
             # Close image
             cropped_img = None
             
-            # create ogr geometry
+            # Create shapefile outline
+            
             linelyr = ogr.Geometry(ogr.wkbLinearRing)
             linelyr.AddPoint(ulx, lry)
             linelyr.AddPoint(lrx, lry)
@@ -211,15 +191,10 @@ def main(args):
             buffered = "buffered_lines.shp"
             
             # Buffer shapefile to make it more visible 
-            subprocess.call(["ogr2ogr", "-dialect", "SQLite", "-sql", "SELECT ST_Buffer(geometry,360) FROM outline", buffered, outline_shape])
-            
-            # Create name for full size false colour image
-            false_colour = img_name.replace(".kea", "_false_colour.jpg")
+            subprocess.call(["ogr2ogr", "-dialect", "SQLite", "-sql", "SELECT ST_Buffer(geometry,360) FROM outline", buffered, outline_shape])            
             
             subprocess.call(["gdal_rasterize", "-burn", "0", "-at", "-b", "6", "-b", "5", "-b", "4", buffered, img_name])
-    
-            subprocess.call(["gdal_translate", img_name, "-b", "6", "-b", "5", "-b", "4", "-of", "jpeg", "-ot", "byte", "-scale_1", band6_min, band6_max, "-scale_2", band5_min, band5_max, "-scale_3", band4_min, band4_max, "-a_nodata", "255", "-outsize", "50%", "50%", false_colour])
-           
+               
             print("Cleaning up...")
             
             # Clean up shape files

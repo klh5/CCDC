@@ -172,6 +172,8 @@ def doTmask(input_ts, tmask_ts):
             
         else:
             print("Warning: Tmask data set too incomplete for masking.") 
+            
+    return input_ts
 
 def initModel(pixel_data, num_bands, init_obs):
 
@@ -307,7 +309,7 @@ def runCCDC(input_data, num_bands, output_file, args):
 
     """The main function which runs the CCDC algorithm. Loops until there are not enough observations
         left after a breakpoint to attempt to initialize a new model."""
-        
+
     # Get the number of years covered by the dataset
     num_years = getNumYears(input_data[:,0])
     
@@ -497,7 +499,7 @@ def runOnSubset(num_bands, args):
                 
                     input_data = transformToArray(input_data)                   
 
-                    if(input_data.shape[1] == input_num_cols):                       
+                    if(input_data.shape[0] > 0 and input_data.shape[1] == input_num_cols):                       
                         
                         if(cloud_ds):                      
                             cloud_masks = transformToArray(cloud_masks)                         
@@ -583,7 +585,7 @@ def runOnArea(num_bands, args):
        
                 input_ts = transformToArray(input_ts)               
     
-                if(input_ts.shape[1] == input_num_cols):
+                if(input_ts.shape[0] > 0 and input_ts.shape[1] == input_num_cols):
                     
                     if(cloud_ds):                      
                         cloud_ts = cloud_masks.isel(x=i, y=j) # Get cloud mask values through time for this pixel
@@ -683,7 +685,7 @@ def runByTile(key, num_bands, args):
         # Tidy up input data
         input_data = xr.concat(input_ds, dim='time')
         input_data = mask_invalid_data(input_data)
-               
+                       
         if(cloud_ds):            
             cloud_masks = xr.concat(cloud_ds, dim='time')
                           
@@ -701,8 +703,9 @@ def runByTile(key, num_bands, args):
                 y_val = str(float(input_ts.y))
                 
                 input_ts = transformToArray(input_ts) # Transform to Numpy array, sort and remove NaNs
-                              
-                if(input_ts.shape[1] == input_num_cols):                 
+                
+                # Check that the input data has at least 1 row and the right number of columns
+                if(input_ts.shape[0] > 0 and input_ts.shape[1] == input_num_cols):                 
                     
                     if(cloud_ds):                      
                         cloud_ts = cloud_masks.isel(x=i, y=j) # Get cloud mask values through time for this pixel
@@ -830,7 +833,7 @@ def runAll(num_bands, args):
 
                     input_ts = transformToArray(input_ts) # Transform the time series into a numpy array                    
                                               
-                    if(input_ts.shape[1] == input_num_cols):
+                    if(input_ts.shape[0] > 0 and input_ts.shape[1] == input_num_cols):
                         
                         if(cloud_ds):
                             

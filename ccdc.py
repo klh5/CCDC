@@ -128,6 +128,51 @@ def tidyData(pixel_ts):
 def doTmask(input_ts, tmask_ts):
     
     """"Removes outliers from the input dataset using Tmask if possible."""
+    
+    num_years = getNumYears(tmask_ts[:,0])
+    
+    if(num_years < 1):
+        
+        print("Warning: Need at least 1 year of data to screen using Tmask.")
+        return input_ts
+    
+    else:
+        if(tmask_ts.shape[1] == 4): # Tmask data should always have 4 columns
+        
+            # Check if Tmask and input data sets are the same length
+            if(np.array_equal(input_ts[:,0], tmask_ts[:,0])):
+            
+                # Screen for outliers
+                robust_outliers = RLMRemoveOutliers(tmask_ts, input_ts)
+        
+                input_ts = robust_outliers.cleanData(num_years)
+                
+                return input_ts
+                
+            else:
+                print("Warning: Input and Tmask data sets do not match exactly. Input: {} Tmask: {}".format(len(input_ts), len(tmask_ts)))
+                
+                # Create mask 
+                mask = np.in1d(input_ts[:,0], tmask_ts[:,0])
+                
+                # Remove rows in the input data set which don't exist in the Tmask data set
+                matched_input_ts = input_ts[mask] 
+                     
+                robust_outliers = RLMRemoveOutliers(tmask_ts, matched_input_ts)
+        
+                matched_input_ts = robust_outliers.cleanData(num_years)
+                
+                # Add missing row back in 
+                extra = input_ts[~mask]
+                               
+                matched_input_ts = np.vstack((matched_input_ts, extra))
+                matched_input_ts = matched_input_ts[np.argsort(matched_input_ts[:,0])]
+                               
+                return matched_input_ts
+            
+        else:
+            print("Warning: Tmask data set too incomplete for masking.")
+             
        
 #    mask = np.in1d(input_ts[:,0], tmask_ts[:,0])
 #    
@@ -139,32 +184,10 @@ def doTmask(input_ts, tmask_ts):
 #    tmask_ts = tmask_ts[np.argsort(tmask_ts[:,0])]
     
     
-    
-    if(tmask_ts.shape[1] == 4): # Tmask data should always have 4 columns
-          
-        # Both datasets need to contain the same observations
-        if(np.array_equal(input_ts[:,0], tmask_ts[:,0])):
-             
-            # Get the number of years covered by the data
-            num_years = getNumYears(input_ts[:,0])
-             
-            if(num_years > 0):
-                 
-                # Screen for outliers
-                robust_outliers = RLMRemoveOutliers(tmask_ts, input_ts)
-        
-                input_ts = robust_outliers.cleanData(num_years)
                 
-            else:
-               print("Need at least 1 year of data to screen using Tmask.")
                
-        else:
-           print("Input dataset and Tmask dataset do not match.")
-           
-           print(input_ts[:,0])
-           print(tmask_ts[:,0])
             
-    return input_ts            
+         
 
 def initModel(pixel_data, num_bands, init_obs):
 

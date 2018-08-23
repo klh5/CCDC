@@ -330,6 +330,7 @@ def runCCDC(input_data, num_bands, output_file, args):
                     plt_list[i].plot(input_data[:,0], input_data[:,i+1], 'o', color='c', label='Original data', markersize=4)
                     myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
                     plt_list[i].xaxis.set_major_formatter(myFmt)
+                    plt_list[i].set_ylabel(args.bands[i], fontdict={"size": 18})
                     #plt_list[i].set_ylim(bottom=0, top=500)
     
             else:
@@ -394,14 +395,15 @@ def runCCDC(input_data, num_bands, output_file, args):
             for i in range(num_bands):
                 interp = interp1d(model_list[i].getDateTimes(), model_list[i].getPredicted(), kind='cubic')
                 xnew = np.linspace(model_list[i].getDateTimes().min(), model_list[i].getDateTimes().max(), 500)
-                plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=2) # Plot fitted model
+                plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=2) # Plot fitted model              
 
             # Plot empty datasets so start/end of change is included in legend
-            plt.plot([], [], 'r', label='Start change')
-            plt.plot([], [], 'y', label='End change')
-            plt.plot([], [], 'm', label='Fitted model')
+            plt_list[0].plot([], [], 'r', label='Start change')
+            plt_list[0].plot([], [], 'y', label='End change')
+            plt_list[0].plot([], [], 'm', label='Fitted model')
             
-            plt.legend()
+            plt_list[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=4, fancybox=True, shadow=True)
+            plt.xlabel("Date", fontdict={"size": 18})
             plt.tight_layout()
             plt.savefig(output_file)
             plt.close(fig)

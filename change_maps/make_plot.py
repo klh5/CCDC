@@ -73,7 +73,8 @@ def main(args):
         # Create plot
         dataset['num_changes'].plot(cmap=plt.cm.OrRd, aspect=aspect, size=20)        
         
-        plt.xticks(rotation='vertical')
+        plt.xticks(rotation=90)
+        plt.yticks(rotation=90)
         plt.tight_layout()
         plt.savefig("change_intensity_map.png")
         
@@ -125,7 +126,7 @@ def main(args):
         band_mean = np.nanmean(dataset['num_changes'].values)
         band_sd = np.nanstd(dataset['num_changes'].values)
         dataset['num_changes'] = dataset['num_changes'].fillna(args.nodata_val)
-        raster_band.SetStatistics(band_min, band_max, band_mean, band_sd)
+        raster_band.SetStatistics(float(band_min), float(band_max), float(band_mean), float(band_sd))
         raster_band.WriteArray(dataset['num_changes'].values)
             
         pred_raster = None

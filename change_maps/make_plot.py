@@ -211,7 +211,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser(description="Generate change map from CCDC output.", formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('-csv', '--csv_dir', required=True, help="The directory containing the CSV files to be processed.")
-    parser.add_argument('-ref', '--ref_img', required=True, help="Reference image to show the area that has been processed. Assumed to be in the same CRS as the change output.")
+    parser.add_argument('-ref', '--ref_img', required=False, help="Reference image to show the area that has been processed. Assumed to be in the same CRS as the change output.")
     parser.add_argument('-nodat', '--nodata_val', type=float, required=True, help="Value for pixels with invalid/no data.")
     parser.add_argument('-cell', '--cell_size', required=True, type=int, help="Spatial resolution, e.g. 30 for Landsat.")
     parser.add_argument('-crs', '--coord_system', type=int, help="EPSG code for the CRS of the data. Enter as a number, e.g. 32655")

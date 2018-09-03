@@ -37,8 +37,8 @@ class MakeCCDCModel(object):
     
         x = x.T
 
-        clf = linear_model.Lasso(fit_intercept=True, alpha=0.001, max_iter=50)
-
+        clf = linear_model.Lasso(fit_intercept=True, alpha=1, max_iter=50)
+        
         self.lasso_model = clf.fit(x, self.band_data)
         
         self.predicted = self.lasso_model.predict(x)

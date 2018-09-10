@@ -167,16 +167,21 @@ def main(args):
         if(args.product):
             
             # User has provided a Data Cube product which the real image belongs to
-
-            start_date = datetime.strptime(date, "%Y-%m-%d")
+            
+            if(args.alt_date):
+                start_date = datetime.strptime(args.alt_date, "%Y-%m-%d")
+                
+            else:
+                start_date = datetime.strptime(date, "%Y-%m-%d")
+                
             end_date = start_date + timedelta(days=1)
            
             epsg_code = "EPSG:{}".format(args.coord_system)
     
             dc = datacube.Datacube()
            
-            real_data = dc.load(product=args.product, measurements=bands, time=(start_date, end_date), x=(x_min, x_max), y=(y_min, y_max), crs=epsg_code, output_crs=epsg_code, resolution=(-args.cell_size, args.cell_size))
-    
+            real_data = dc.load(product=args.product, measurements=bands, time=(start_date, end_date), x=(x_min, x_max), y=(y_min, y_max), crs=epsg_code, output_crs=epsg_code, resolution=(-args.cell_size, args.cell_size), group_by="solar_day")
+
             if(real_data.variables):
                
                 # Output KEA file for real data
@@ -242,6 +247,7 @@ if __name__ == "__main__":
     parser.add_argument('-cell', '--cell_size', required=True, type=int, help="Spatial resolution, e.g. 30 for Landsat.")
     parser.add_argument('-p', '--product', help="Product name for comparison dataset. The actual comparison image will be found based on the date and spatial extent of the analysed data.")
     parser.add_argument('-img', '--real_img', help="Location of corresponding real image. Can be used instead of fetching real image from the Data Cube.")
+    parser.add_argument('-d', '--alt_date', help="Alternative date to search for in Data Cube, in case the real image is too cloudy or otherwise unusable for comparison.")
     
     args = parser.parse_args()
     

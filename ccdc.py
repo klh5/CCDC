@@ -295,7 +295,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
                     pkl_file = "{}_{}_{}_{}.pkl".format(change_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), args.bands[model_num])
                     joblib.dump(model, pkl_file) 
                                
-            return pixel_data[next_obs-5:,]
+            return pixel_data[next_obs-5:,] # Return index of date when change was first flagged
         
         # Need to get the next observation
         next_obs += 1
@@ -975,7 +975,7 @@ if __name__ == "__main__":
     parser.add_argument('-clouds', '--cloud_products', nargs='+', help="The product(s) to use for cloud masking. If not specified, the data is assumes to already be masked.")    
     parser.add_argument('-i', '--re_init', type=int, default=1, help="The number of new observations added to a model before the model is refitted.")
     parser.add_argument('-p', '--num_procs', type=int, default=1, help="The number of processes to use.")
-    parser.add_argument('-s', '--save_models', type=bool, default=False, help="Whether models should be pickled.")
+    parser.add_argument('-s', '--save_models', action='store_true', help="Add this flag if models should be pickled.")
     parser.add_argument('-b', '--bands', nargs='+', required=True, help="List of band names to use in the analysis.")    
     parser.add_argument('-csv', '--csv_file', help="The CSV file to use, if process mode is CSV.")
     

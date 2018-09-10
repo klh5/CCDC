@@ -11,8 +11,11 @@ import xarray as xr
 import subprocess
 import argparse
 import numpy as np
+import datacube
 from osgeo import gdal, osr, ogr
 from matplotlib import pyplot as plt
+from datetime import datetime
+from datetime import timedelta
 
 def main(args):
 
@@ -82,6 +85,8 @@ def main(args):
         
         kea_change_map = "intensity_map.kea"
         x_min = np.amin(dataset.x.values)
+        x_max = np.amax(dataset.x.values)
+        y_min = np.amin(dataset.y.values)
         y_max = np.amax(dataset.y.values)
     
         geo_transform = (x_min, args.cell_size, 0.0, y_max, 0.0, -args.cell_size)
@@ -91,7 +96,7 @@ def main(args):
             
         if(args.ref_img):
             
-            print("Reference image: {}".format(args.ref_img))
+            print("Using CRS of reference image: {}".format(args.ref_img))
             
             img_name = args.ref_img
         
@@ -99,7 +104,7 @@ def main(args):
             orig_img = gdal.Open(img_name)
             srs = orig_img.GetProjection()
             
-            print("CRS from input image is {}".format(srs))
+            print("CRS from reference image is {}".format(srs))
             
             orig_img = None
             
@@ -130,6 +135,8 @@ def main(args):
         raster_band.WriteArray(dataset['num_changes'].values)
             
         pred_raster = None
+        
+        print("Change intensity map done.")
         
         if(args.ref_img):
             
@@ -197,7 +204,7 @@ def main(args):
             subprocess.call(["gdal_rasterize", "-burn", "0", "-at", "-b", "6", "-b", "5", "-b", "4", buffered, img_name])
                
             print("Cleaning up...")
-            
+                    
             # Clean up shape files
             crop_files  = shapefile.replace("shp", "*")
             outline_files = outline_shape.replace("shp", "*")
@@ -205,7 +212,46 @@ def main(args):
     
             for file in os.listdir("."):
                 if re.search(crop_files, file) or re.search(outline_files, file) or re.search(buffered_files, file):
-                    os.remove(file)                         
+                    os.remove(file) 
+
+        elif(args.product and args.date and args.coord_system):
+            
+            print("Finding reference image using Data Cube product...")
+            
+            crs = "EPSG:{}".format(args.coord_system)
+            
+            start_date = datetime.strptime(args.date, "%Y-%m-%d")
+            end_date = start_date + timedelta(days=1)
+            
+            dc = datacube.Datacube()
+            
+            ref_data = dc.load(product=args.product, time=(start_date, end_date), x=(x_min, x_max), y=(y_min, y_max), crs=crs, output_crs=crs, resolution=(-args.cell_size, args.cell_size), group_by="solar_day")
+                        
+            print("Generating reference KEA file...")
+            
+            # Output KEA file for real data
+            ref_name = "ref_img.kea"
+            
+            num_bands = len(ref_data.data_vars)
+           
+            ref_img = driver.Create(ref_name, x_size, y_size, num_bands, 2)
+           
+            ref_img.SetProjection(srs)
+            ref_img.SetGeoTransform(geo_transform)
+           
+            for band_num, var in enumerate(ref_data.data_vars):      
+                raster_band = ref_img.GetRasterBand(band_num+1)
+                raster_band.SetNoDataValue(args.nodata_val)
+                raster_band.SetDescription(var)
+                band_min = np.nanmin(ref_data[var].values)
+                band_max = np.nanmax(ref_data[var].values)
+                band_mean = np.nanmean(ref_data[var].values)
+                band_sd = np.nanstd(ref_data[var].values)
+                ref_data[var] = ref_data[var].fillna(args.nodata_val)
+                raster_band.SetStatistics(float(band_min), float(band_max), float(band_mean), float(band_sd))
+                raster_band.WriteArray(ref_data[var].values.reshape(y_size, -1))
+               
+            ref_img = None
         
 if __name__ == "__main__":
     
@@ -214,6 +260,8 @@ if __name__ == "__main__":
     parser.add_argument('-ref', '--ref_img', required=False, help="Reference image to show the area that has been processed. Assumed to be in the same CRS as the change output.")
     parser.add_argument('-nodat', '--nodata_val', type=float, required=True, help="Value for pixels with invalid/no data.")
     parser.add_argument('-cell', '--cell_size', required=True, type=int, help="Spatial resolution, e.g. 30 for Landsat.")
+    parser.add_argument('-p', '--product', help="Product name for comparison dataset. The actual comparison image will be found based on the provided date and the spatial extent of the analysed data.")
+    parser.add_argument('-d', '--date', help="Date for reference image from Data Cube. Format should be YYYY-MM-DD")
     parser.add_argument('-crs', '--coord_system', type=int, help="EPSG code for the CRS of the data. Enter as a number, e.g. 32655")
 
     args = parser.parse_args()

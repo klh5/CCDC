@@ -292,7 +292,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             # Pickle current models
             if(args.save_models):
                 for model_num, model in enumerate(model_list):
-                    pkl_file = "{}_{}_{}_{}.pkl".format(change_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), model_num)
+                    pkl_file = "{}_{}_{}_{}.pkl".format(change_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), args.bands[model_num])
                     joblib.dump(model, pkl_file) 
                                
             return pixel_data[next_obs-5:,]
@@ -336,7 +336,7 @@ def runCCDC(input_data, num_bands, output_file, args):
                   
                   with open(output_file, 'w') as output:
                      writer = csv.writer(output)
-                     writer.writerow(['change_date', 'magnitude'])
+                     writer.writerow(['change_date'])
            
         if(args.output_mode == "predictive"):
             
@@ -408,7 +408,7 @@ def runCCDC(input_data, num_bands, output_file, args):
         # Save final models if requested
         if(args.save_models):
             for model_num, model in enumerate(model_list):
-                pkl_file = "{}_{}_{}_{}.pkl".format(output_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), model_num)
+                pkl_file = "{}_{}_{}_{}.pkl".format(output_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), args.bands[model_num])
                 joblib.dump(model, pkl_file) 
                              
 def loadSubset(dc, product, bands, new_point_lat, new_point_long):

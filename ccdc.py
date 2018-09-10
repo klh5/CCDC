@@ -21,7 +21,7 @@ from sklearn.externals import joblib
 
 plt_list = []        # List of plots, one for each band
 
-def addChangeMarker(num_bands, start_change, end_change, obs_data):
+def addChangeMarker(num_bands, change_date, obs_data):
 
     """ Adds vertical lines to each plot every time change is detected """
        
@@ -29,8 +29,7 @@ def addChangeMarker(num_bands, start_change, end_change, obs_data):
         y_min = np.amin(obs_data[:,i+1])
         y_max = np.amax(obs_data[:,i+1])
 
-        plt_list[i].plot([start_change, start_change], [y_min, y_max], 'r', linewidth=2)
-        plt_list[i].plot([end_change, end_change], [y_min, y_max], 'y', linewidth=2)
+        plt_list[i].plot([change_date, change_date], [y_min, y_max], 'r', linewidth=2)
 
         interp = interp1d(model_list[i].getDateTimes(), model_list[i].getPredicted(), kind='cubic')
         xnew = np.linspace(model_list[i].getDateTimes().min(), model_list[i].getDateTimes().max(), 500)
@@ -243,7 +242,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
 
     # Detect change
     change_flag = 0
-    change_start_time = None
+    change_time = None
     
     num_new_obs = 0
 
@@ -275,7 +274,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             change_flag += 1 # Don't add the new pixel to the model
 
             if(change_flag == 1): # If this is the first observed possible change point
-                change_start_time = new_date
+                change_time = new_date
     
         if(change_flag == 6):
             #print("Change detected!")
@@ -283,21 +282,20 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             if(args.output_mode == "normal"):
                 
                 if(args.outtype == 'plot'):
-                    addChangeMarker(num_bands, change_start_time, new_date, pixel_data)
+                    addChangeMarker(num_bands, change_time, pixel_data)
     
                 else:
                    with open(change_file, 'a') as output_file:
                       writer = csv.writer(output_file)
-                      writer.writerow([datetime.fromordinal(int(change_start_time)).strftime('%d/%m/%Y'), datetime.fromordinal(int(new_date)).strftime('%d/%m/%Y')])
+                      writer.writerow([datetime.fromordinal(int(change_time)).strftime('%d/%m/%Y')])
             
             # Pickle current models
             if(args.save_models):
                 for model_num, model in enumerate(model_list):
                     pkl_file = "{}_{}_{}_{}.pkl".format(change_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), model_num)
                     joblib.dump(model, pkl_file) 
-                    
-            
-            return pixel_data[next_obs:,]
+                               
+            return pixel_data[next_obs-5:,]
         
         # Need to get the next observation
         next_obs += 1
@@ -338,7 +336,7 @@ def runCCDC(input_data, num_bands, output_file, args):
                   
                   with open(output_file, 'w') as output:
                      writer = csv.writer(output)
-                     writer.writerow(['start_change', 'end_change'])
+                     writer.writerow(['change_date', 'magnitude'])
            
         if(args.output_mode == "predictive"):
             
@@ -398,8 +396,7 @@ def runCCDC(input_data, num_bands, output_file, args):
                 plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=2) # Plot fitted model              
 
             # Plot empty datasets so start/end of change is included in legend
-            plt_list[0].plot([], [], 'r', label='Start change')
-            plt_list[0].plot([], [], 'y', label='End change')
+            plt_list[0].plot([], [], 'r', label='Change')
             plt_list[0].plot([], [], 'm', label='Fitted model')
             
             plt_list[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=4, fancybox=True, shadow=True)

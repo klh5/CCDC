@@ -243,6 +243,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
     # Detect change
     change_flag = 0
     change_time = None
+    change_mags = None
     
     num_new_obs = 0
 
@@ -253,12 +254,14 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
         new_obs = pixel_data[next_obs,]
         new_date = new_obs[0]
         
-        for i in range(1, num_bands+1):    # For each band
-            new_ref_obs = new_obs[i]
-            residual_val = np.absolute(new_ref_obs - model_list[i-1].getPrediction(new_date)[0]) / (2 * model_list[i-1].getRMSE())
-            change_eval += residual_val
+        # Calculate difference between real and predicted value for each band
+        residuals = [new_obs[i] - model_list[i-1].getPrediction(new_date)[0] for i in range(1, num_bands+1)]
+                
+        for i, residual in enumerate(residuals):
+            rval = np.absolute(residual) / (2 * model_list[i].getRMSE())
+            change_eval += rval            
             
-        if((change_eval / num_bands) <= 1):
+        if((change_eval / num_bands) <= 1): # No deviation from model detected
             #print("Adding new data point")
             model_data = np.append(model_data, [new_obs], axis=0)
             
@@ -270,11 +273,12 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
                 
             change_flag = 0 # Reset change flag because we have an inlier
 
-        else:
+        else: # Deviation from model detected
             change_flag += 1 # Don't add the new pixel to the model
 
             if(change_flag == 1): # If this is the first observed possible change point
-                change_time = new_date
+                change_time = new_date # Log this as the new possible date of change
+                change_mags = residuals # Log residuals as new possible magnitudes of change
     
         if(change_flag == 6):
             #print("Change detected!")
@@ -285,9 +289,11 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
                     addChangeMarker(num_bands, change_time, pixel_data)
     
                 else:
+                   change_mags.insert(0, datetime.fromordinal(int(change_time)).strftime('%d/%m/%Y'))
+                   
                    with open(change_file, 'a') as output_file:
                       writer = csv.writer(output_file)
-                      writer.writerow([datetime.fromordinal(int(change_time)).strftime('%d/%m/%Y')])
+                      writer.writerow(change_mags)
             
             # Pickle current models
             if(args.save_models):
@@ -334,9 +340,12 @@ def runCCDC(input_data, num_bands, output_file, args):
             else:
                   output_file = output_file + ".csv"
                   
+                  headers = ["mag_{}".format(band_name) for band_name in args.bands]
+                  headers.insert(0, "change_date")
+                  
                   with open(output_file, 'w') as output:
                      writer = csv.writer(output)
-                     writer.writerow(['change_date'])
+                     writer.writerow(headers)
            
         if(args.output_mode == "predictive"):
             
@@ -702,7 +711,7 @@ def runByTile(key, num_bands, args):
                 y_val = str(float(input_ts.y))
                 
                 input_ts = transformToArray(input_ts) # Transform to Numpy array, sort and remove NaNs
-                
+
                 # Check that the input data has at least 1 row and the right number of columns
                 if(input_ts.shape[0] > 0 and input_ts.shape[1] == input_num_cols):                 
                     

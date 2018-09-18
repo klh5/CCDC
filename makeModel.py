@@ -1,27 +1,33 @@
 import numpy as np
 from sklearn import linear_model
+from datetime import datetime
 
 class MakeCCDCModel(object):
 
-    def __init__(self, datetimes, band_data):
+    def __init__(self, datetimes):
         
         self.T = 365.25
         self.pi_val_simple = (2 * np.pi) / self.T
         self.pi_val_advanced = (4 * np.pi) / self.T
         self.pi_val_full = (6 * np.pi) / self.T
-        self.band_data = band_data
         self.datetimes = datetimes
         
+        self.doy = np.array([datetime.fromordinal(x.astype(int)).timetuple().tm_yday for x in self.datetimes])
         self.lasso_model = None
+        self.residuals = None
         self.RMSE = None
         self.coefficients = None
-        self.start_date = self.datetimes.min()
         self.predicted = None
+        self.start_val = None
+        self.end_val = None
 
-    def fitModel(self, model_num):
+    def fitModel(self, model_num, band_data):
+        
+        self.start_val = band_data[0]
+        self.end_val = band_data[-1]
         
         """Finds the coefficients by fitting a Lasso model to the data"""
-        rescaled = self.datetimes - self.start_date
+        rescaled = self.datetimes - self.getMinDate()
         
         x = np.array([rescaled,
                       np.cos(self.pi_val_simple * rescaled),
@@ -39,20 +45,23 @@ class MakeCCDCModel(object):
 
         clf = linear_model.Lasso(fit_intercept=True, alpha=1, max_iter=50)
         
-        self.lasso_model = clf.fit(x, self.band_data)
+        self.lasso_model = clf.fit(x, band_data)
         
         self.predicted = self.lasso_model.predict(x)
+        
+        self.coefficients = self.lasso_model.coef_
+        
+        self.residuals = band_data - self.predicted
     
-        self.RMSE = np.sqrt(np.mean((self.band_data - self.predicted) ** 2))
-
-        self.coefficients = self.lasso_model.coef_ 
-
+        # Get overall RMSE of model
+        self.RMSE = np.sqrt(np.mean(self.residuals ** 2))
+            
     def getPrediction(self, date_to_predict):
     
         """Returns the predicted value for a given date based on the current model"""
         
         # Rescale date so that it starts from 0
-        date_to_predict = date_to_predict - self.start_date
+        date_to_predict = date_to_predict - self.getMinDate()
         
         x = np.array([[date_to_predict],
                       [np.cos(self.pi_val_simple * date_to_predict)],
@@ -68,29 +77,39 @@ class MakeCCDCModel(object):
     
         x = x.T
         return self.lasso_model.predict(x.reshape(1,-1))
-        
-    def getCoefficients(self):
-        
-        """Returns the list of coefficients for this model"""
-        
-        if(self.coefficients.any()):
-            return self.coefficients
-
-    def getRMSE(self):
-        
-        """Returns the RMSE value, which is used to find change in the model"""
     
-        if(self.RMSE != None):
+    def getAdjustedRMSE(self, curr_date):
+        
+        """Get adjusted RMSE for a specific DOY"""
+        
+        # Get DOY for current date
+        curr_doy = datetime.fromordinal(curr_date.astype(int)).timetuple().tm_yday
+               
+        # Get absolute differences between the current DOY and all other DOY values
+        differenced = np.abs(self.doy - curr_doy)
+
+        # Sort differenced values and return index
+        sorted_ix = sorted(range(len(differenced)), key=lambda k: differenced[k])
+
+        # Get 24 closest values by index
+        closest = sorted_ix[:24]
+        
+        # Subset residuals by indices of closest DOY values
+        closest_residuals = self.residuals[closest]
+    
+        # Calculate adjusted RMSE
+        adjusted_rmse = np.sqrt(np.mean(closest_residuals ** 2))
+        
+        return adjusted_rmse
+    
+    def getRMSE(self, curr_date):
+        
+        if(len(self.datetimes) >= 24 and self.getNumCoeffs() >= 7):
+            return self.getAdjustedRMSE(curr_date)
+        
+        else:
             return self.RMSE
-
-    def getPredicted(self):
-
-        return self.predicted
-    
-    def getDateTimes(self):
-
-        return self.datetimes
-    
+           
     def getMinDate(self):
         
         return np.min(self.datetimes)
@@ -103,9 +122,6 @@ class MakeCCDCModel(object):
 		
         return len(self.coefficients)
     
-    def getBandData(self):
-        
-        return self.band_data
 
 
 

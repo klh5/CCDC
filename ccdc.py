@@ -31,8 +31,8 @@ def addChangeMarker(num_bands, change_date, obs_data):
 
         plt_list[i].plot([change_date, change_date], [y_min, y_max], 'r', linewidth=2)
 
-        interp = interp1d(model_list[i].getDateTimes(), model_list[i].getPredicted(), kind='cubic')
-        xnew = np.linspace(model_list[i].getDateTimes().min(), model_list[i].getDateTimes().max(), 500)
+        interp = interp1d(model_list[i].datetimes, model_list[i].predicted, kind='cubic')
+        xnew = np.linspace(model_list[i].getMinDate(), model_list[i].getMaxDate(), 500)
         
         plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=2)
         
@@ -48,9 +48,9 @@ def setupModels(all_band_data, num_bands, init_obs):
         
         band_data = all_band_data[:,i]
    
-        ccdc_model = MakeCCDCModel(datetimes, band_data)
+        ccdc_model = MakeCCDCModel(datetimes)
             
-        ccdc_model.fitModel(init_obs)
+        ccdc_model.fitModel(init_obs, band_data)
         
         model_list[i-1] = ccdc_model
 
@@ -110,7 +110,7 @@ def writeOutPrediction(output_file, end_date):
             row.append(prediction)
             
         writer.writerow(row)
-        
+      
 def tidyData(pixel_ts):
     
     """Takes a single pixel time series, removes NaN values, and sorts by date."""
@@ -123,7 +123,7 @@ def tidyData(pixel_ts):
     pixel_ts = pixel_ts[np.argsort(pixel_ts[:,0])]
                                              
     return pixel_ts        
-       
+   
 def doTmask(input_ts, tmask_ts):
     
     """"Removes outliers from the input dataset using Tmask if possible."""
@@ -191,6 +191,7 @@ def initModel(pixel_data, num_bands, init_obs):
     # Model initialization sequence - keeps going until a clear set of observations is found
     while(model_init == False):
 
+        # Check if there are not enough data points left to initialise the models
         num_data_points = len(curr_obs_list)
         
         if(num_data_points < init_obs):
@@ -206,17 +207,17 @@ def initModel(pixel_data, num_bands, init_obs):
         total_slope_eval = 0
         total_start_eval = 0
         total_end_eval = 0
-  
+        
         # Check for change during the initialization period. We need 12 observations with no change
         for band_model in model_list: # For each model
             
-            slope_val = np.absolute(band_model.getCoefficients()[0]) / (3 * band_model.getRMSE() / total_time)
+            slope_val = np.absolute(band_model.coefficients[0]) / (3 * band_model.RMSE / total_time)
             total_slope_eval += slope_val
         
-            start_val = np.absolute(band_model.getBandData()[0] - band_model.getPredicted()[0]) / (3 * band_model.getRMSE())
+            start_val = np.absolute(band_model.start_val - band_model.predicted[0]) / (3 * band_model.RMSE)
             total_start_eval += start_val
             
-            end_val = np.absolute(band_model.getBandData()[num_data_points-1] - band_model.getPredicted()[num_data_points-1]) / (3 * band_model.getRMSE())
+            end_val = np.absolute(band_model.end_val - band_model.predicted[init_obs-1]) / (3 * band_model.RMSE)
             total_end_eval += end_val
  
         if((total_slope_eval / num_bands) > 1 or (total_start_eval / num_bands) > 1 or (total_end_eval / num_bands) > 1):
@@ -251,14 +252,17 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
 
         change_eval = 0
         
+        # Get next row from the time series
         new_obs = pixel_data[next_obs,]
+        
+        # Get date
         new_date = new_obs[0]
         
-        # Calculate difference between real and predicted value for each band
+        # Calculate difference between real and predicted value for the new observation in each band
         residuals = [new_obs[i] - model_list[i-1].getPrediction(new_date)[0] for i in range(1, num_bands+1)]
-                
+        
         for i, residual in enumerate(residuals):
-            rval = np.absolute(residual) / (2 * model_list[i].getRMSE())
+            rval = np.absolute(residual) / (2 * model_list[i].getRMSE(new_date)) # RMSE will be seasonally adjusted if the model contains >=24 observations
             change_eval += rval            
             
         if((change_eval / num_bands) <= 1): # No deviation from model detected
@@ -335,7 +339,6 @@ def runCCDC(input_data, num_bands, output_file, args):
                     myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
                     plt_list[i].xaxis.set_major_formatter(myFmt)
                     plt_list[i].set_ylabel(args.bands[i], fontdict={"size": 18})
-                    #plt_list[i].set_ylim(bottom=0, top=500)
     
             else:
                   output_file = output_file + ".csv"
@@ -400,8 +403,8 @@ def runCCDC(input_data, num_bands, output_file, args):
         if(args.output_mode == "normal" and args.outtype == 'plot'):
 
             for i in range(num_bands):
-                interp = interp1d(model_list[i].getDateTimes(), model_list[i].getPredicted(), kind='cubic')
-                xnew = np.linspace(model_list[i].getDateTimes().min(), model_list[i].getDateTimes().max(), 500)
+                interp = interp1d(model_list[i].datetimes, model_list[i].predicted, kind='cubic')
+                xnew = np.linspace(model_list[i].getMinDate(), model_list[i].getMaxDate(), 500)
                 plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=2) # Plot fitted model              
 
             # Plot empty datasets so start/end of change is included in legend

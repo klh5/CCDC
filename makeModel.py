@@ -4,7 +4,7 @@ from datetime import datetime
 
 class MakeCCDCModel(object):
 
-    def __init__(self, datetimes):
+    def __init__(self, datetimes, init_obs):
         
         self.T = 365.25
         self.pi_val_simple = (2 * np.pi) / self.T
@@ -20,8 +20,9 @@ class MakeCCDCModel(object):
         self.predicted = None
         self.start_val = None
         self.end_val = None
+        self.init_obs = init_obs
 
-    def fitModel(self, model_num, band_data):
+    def fitModel(self, band_data):
         
         self.start_val = band_data[0]
         self.end_val = band_data[-1]
@@ -33,11 +34,11 @@ class MakeCCDCModel(object):
                       np.cos(self.pi_val_simple * rescaled),
                       np.sin(self.pi_val_simple * rescaled)])
 
-        if(model_num >= 24):
+        if(self.init_obs >= 18):
             x = np.vstack((x, np.array([np.cos(self.pi_val_advanced * rescaled),
                       np.sin(self.pi_val_advanced * rescaled)])))
     
-        if(model_num >= 30):
+        if(self.init_obs >= 24):
             x = np.vstack((x, np.array([np.cos(self.pi_val_full * rescaled),
                       np.sin(self.pi_val_full * rescaled)])))
     
@@ -67,11 +68,11 @@ class MakeCCDCModel(object):
                       [np.cos(self.pi_val_simple * date_to_predict)],
                       [np.sin(self.pi_val_simple * date_to_predict)]])
 
-        if(self.getNumCoeffs() >= 5):
+        if(self.init_obs >= 18):
             x = np.vstack((x, np.array([[np.cos(self.pi_val_advanced * date_to_predict)],
                       [np.sin(self.pi_val_advanced * date_to_predict)]])))
     
-        if(self.getNumCoeffs() >= 7):
+        if(self.init_obs >= 24):
             x = np.vstack((x, np.array([[np.cos(self.pi_val_full * date_to_predict)],
                       [np.sin(self.pi_val_full * date_to_predict)]])))
     
@@ -104,7 +105,7 @@ class MakeCCDCModel(object):
     
     def getRMSE(self, curr_date):
         
-        if(len(self.datetimes) >= 24 and self.getNumCoeffs() >= 7):
+        if(len(self.datetimes) >= 24):
             return self.getAdjustedRMSE(curr_date)
         
         else:

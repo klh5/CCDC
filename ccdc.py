@@ -48,9 +48,9 @@ def setupModels(all_band_data, num_bands, init_obs):
         
         band_data = all_band_data[:,i]
    
-        ccdc_model = MakeCCDCModel(datetimes)
+        ccdc_model = MakeCCDCModel(datetimes, init_obs)
             
-        ccdc_model.fitModel(init_obs, band_data)
+        ccdc_model.fitModel(band_data)
         
         model_list[i-1] = ccdc_model
 
@@ -262,7 +262,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
         residuals = [new_obs[i] - model_list[i-1].getPrediction(new_date)[0] for i in range(1, num_bands+1)]
         
         for i, residual in enumerate(residuals):
-            rval = np.absolute(residual) / (2 * model_list[i].getRMSE(new_date)) # RMSE will be seasonally adjusted if the model contains >=24 observations
+            rval = np.absolute(residual) / (2 * model_list[i].getRMSE(new_date)) # RMSE will be seasonally adjusted if there are >=24 observations
             change_eval += rval            
             
         if((change_eval / num_bands) <= 1): # No deviation from model detected
@@ -322,7 +322,7 @@ def runCCDC(input_data, num_bands, output_file, args):
     num_years = getNumYears(input_data[:,0])
     
     # The algorithm needs at least 1 year of data (after any screening)
-    if(num_years > 0 and len(input_data) >= 12):
+    if(num_years > 0 and len(input_data) >= 6):
         
         if(args.output_mode == "normal"):
                               
@@ -359,26 +359,26 @@ def runCCDC(input_data, num_bands, output_file, args):
             output_file = output_file + ".csv"
             setupPredictionFile(output_file, num_bands, args.bands)                 
                  
-        # We need at least 12 clear observations (6 + 6 to detect change)
-        while(len(input_data) >= 12):
+        # We need at least 6 clear observations
+        while(len(input_data) >= 6):
             if(getNumYears(input_data[:,0]) > 0):
 
                 # Get total number of clear observations in the dataset
                 num_clear_obs = len(input_data)
         
-                if(num_clear_obs < 18):
+                if(num_clear_obs >=6 and num_clear_obs < 12):
                     # Use simple model with initialization period of 6 obs
                     input_data = findChange(input_data, output_file, num_bands, 6, args)
                 
-                elif(num_clear_obs >= 18 and num_clear_obs < 24):
+                elif(num_clear_obs >= 12 and num_clear_obs < 18):
                     # Use simple model with initialization period of 12 obs
                     input_data = findChange(input_data, output_file, num_bands, 12, args)
 
-                elif(num_clear_obs >= 24 and num_clear_obs < 30):
+                elif(num_clear_obs >= 18 and num_clear_obs < 24):
                     # Use advanced model with initialization period of 18 obs
                     input_data = findChange(input_data, output_file, num_bands, 18, args)
                 
-                elif(num_clear_obs >= 30):
+                elif(num_clear_obs >= 24):
                     # Use full model with initialisation period of 24 obs
                     input_data = findChange(input_data, output_file, num_bands, 24, args)
                     

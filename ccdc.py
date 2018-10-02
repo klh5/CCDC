@@ -335,7 +335,7 @@ def runCCDC(input_data, num_bands, output_file, args):
                 # Set up plots with original data and screened data
                 for i in range(num_bands):
                     plt_list.append(fig.add_subplot(num_bands, 1, i+1))
-                    plt_list[i].plot(input_data[:,0], input_data[:,i+1], 'o', color='c', label='Original data', markersize=4)
+                    plt_list[i].plot(input_data[:,0], input_data[:,i+1], 'o', color='k', label='Original data', markersize=4)
                     myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
                     plt_list[i].xaxis.set_major_formatter(myFmt)
                     plt_list[i].set_ylabel(args.bands[i], fontdict={"size": 18})
@@ -423,17 +423,80 @@ def runCCDC(input_data, num_bands, output_file, args):
                 pkl_file = "{}_{}_{}_{}.pkl".format(output_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), args.bands[model_num])
                 joblib.dump(model, pkl_file) 
                              
-def loadSubset(dc, product, bands, new_point_lat, new_point_long):
+def loadSubset(products, dc, bands, new_point_lat, new_point_long):
     
     ds = []
     
-    dataset = dc.load(product=product, measurements=bands, lat=(new_point_lat), lon=(new_point_long), group_by='solar_day')
-
-    if(dataset.variables):
-        ds.append(dataset) 
+    for product in products:
+    
+        dataset = dc.load(product=product, measurements=bands, lat=(new_point_lat), lon=(new_point_long), group_by='solar_day')
+    
+        if(dataset.variables):
+            ds.append(dataset) 
         
     return ds
+
+def loadPixel(args, lat, long, num_cols, num_bands):
     
+    """
+    Loads a single pixel (by lat/long).
+    """
+    
+    input_ds = []
+    cloud_ds = []
+    tmask_ds = []
+    
+    dc = datacube.Datacube()
+    
+    input_ds = loadSubset(args.input_products, dc, args.bands, lat, long)
+
+    if(len(input_ds) == len(args.input_products)):
+        
+        if(args.tmask_products):
+            
+            tmask_ds = loadSubset(args.tmask_products, dc, ['green', 'nir', 'swir1'], lat, long)
+                
+        if(args.cloud_products):
+            
+            cloud_ds = loadSubset(args.cloud_products, dc, ['cloud_mask'], lat, long)
+                                    
+        dc.close()
+        
+        # Tidy up input data
+        input_data = xr.concat(input_ds, dim='time')
+        input_data = mask_invalid_data(input_data)
+        
+        if(cloud_ds):
+            cloud_masks = xr.concat(cloud_ds, dim='time')
+        
+        # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
+        if(tmask_ds):
+    
+            tmask_data = xr.concat(tmask_ds, dim='time')
+            tmask_data = mask_invalid_data(tmask_data)
+    
+        input_data = transformToArray(input_data)                   
+
+        if(input_data.shape[0] > 0 and input_data.shape[1] == num_cols):                       
+            
+            if(cloud_ds):                      
+                cloud_masks = transformToArray(cloud_masks)                         
+                cloud_masks = cloud_masks[np.isin(cloud_masks[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data      
+                input_data = input_data[cloud_masks[:,1] == 0] # Do masking (0 value is clear)
+                          
+            if(tmask_ds):            
+                tmask_data = transformToArray(tmask_data)         
+                tmask_data = tmask_data[np.isin(tmask_data[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data
+                input_data = doTmask(input_data, tmask_data) # Use Tmask to further screen the input data
+            
+            output_lat = "{0:.6f}".format(lat)
+            output_long = "{0:.6f}".format(long)
+            output_coords = "{}_{}".format(output_lat, output_long)    
+                                                         
+            output_file = os.path.join(args.outdir, output_coords)
+            
+            runCCDC(input_data, num_bands, output_file, args)
+                                   
 def runOnSubset(num_bands, args):
 
     """If the user chooses to run the algorithm on a random subsample of the data, this function is called.
@@ -462,75 +525,52 @@ def runOnSubset(num_bands, args):
     num_points = args.num_points # Defaults to 100
 
     curr_points = 0
+    
+    # Set up variables for using multiprocessing
+    num_processes = args.num_procs
+
+    processes = []
 
     for i in range(num_points):
         
         while(curr_points < num_points):
             
             new_point = ogr.Geometry(ogr.wkbPoint)
-            new_point_lat = uniform(min_lat, max_lat)
-            new_point_long = uniform(min_long, max_long)
+            new_point_lat = uniform(min_lat, max_lat) # Get random latitude
+            new_point_long = uniform(min_long, max_long) # Get random longitude            
         
-            new_point.AddPoint(new_point_lat, new_point_long)
+            new_point.AddPoint(new_point_lat, new_point_long) # Create new point
 
             if(new_point.Within(poly)):
-               
-                input_ds = []
-                cloud_ds = []
-                tmask_ds = []
-
-                dc = datacube.Datacube()
                 
-                input_ds = loadSubset(dc, args.input_products, args.bands, new_point_lat, new_point_long)
+                # Block until a core becomes available
+                    while(True):
+    
+                        p_done = []
+    
+                        for index, p in enumerate(processes):
+                                    
+                            if(not p.is_alive()):
+                                p_done.append(index)
+    
+                        if(p_done):
+                            for index in sorted(p_done, reverse=True): # Need to delete in reverse order to preserve indexes
+                                del(processes[index])
+    
+                        if(len(processes) < num_processes):
+                            break
+                                        
+                    process = multiprocessing.Process(target=loadPixel, args=(args, new_point_lat, new_point_long, input_num_cols, num_bands))
+                    processes.append(process)
+                    process.start()
+                    
+                    curr_points += 1
+                    print(curr_points)
 
-                if(len(input_ds) == len(args.input_products)):
-                    
-                    if(args.tmask_products):
-                        
-                        tmask_ds = loadSubset(dc, args.tmask_products, ['green', 'nir', 'swir1'], new_point_lat, new_point_long)
-                            
-                    if(args.cloud_products):
-                        
-                        cloud_ds = loadSubset(dc, args.cloud_products, ['cloud_mask'], new_point_lat, new_point_long)
-                                                
-                    dc.close()
-                    
-                    # Tidy up input data
-                    input_data = xr.concat(input_ds, dim='time')
-                    input_data = mask_invalid_data(input_data)
-                    
-                    if(cloud_ds):
-                        cloud_masks = xr.concat(cloud_ds, dim='time')
-                    
-                    # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
-                    if(tmask_ds):
+    # Keep running until all processes have finished
+    for p in processes:
+        p.join()
                 
-                        tmask_data = xr.concat(tmask_ds, dim='time')
-                        tmask_data = mask_invalid_data(tmask_data)
-                
-                    input_data = transformToArray(input_data)                   
-
-                    if(input_data.shape[0] > 0 and input_data.shape[1] == input_num_cols):                       
-                        
-                        if(cloud_ds):                      
-                            cloud_masks = transformToArray(cloud_masks)                         
-                            cloud_masks = cloud_masks[np.isin(cloud_masks[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data      
-                            input_data = input_data[cloud_masks[:,1] == 0] # Do masking (0 value is clear)
-                                      
-                        if(tmask_ds):            
-                            tmask_data = transformToArray(tmask_data)         
-                            tmask_data = tmask_data[np.isin(tmask_data[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data
-                            input_data = doTmask(input_data, tmask_data) # Use Tmask to further screen the input data
-                           
-                        x_coord = "{0:.6f}".format(new_point.GetX())
-                        y_coord = "{0:.6f}".format(new_point.GetX())
-                        
-                        output_coords = "{}_{}".format(x_coord, y_coord)                                                                      
-                        output_file = os.path.join(args.outdir, output_coords)
-                        
-                        runCCDC(input_data, num_bands, output_file, args)
-                        curr_points += 1
-
 def loadArea(products, dc, bands, lowerlat, upperlat, lowerlon, upperlon):
     
     ds = []

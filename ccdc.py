@@ -18,6 +18,7 @@ from osgeo import ogr
 from random import uniform
 from scipy.interpolate import interp1d
 from sklearn.externals import joblib
+from multiprocessing import Pool
 
 plt_list = []        # List of plots, one for each band
 
@@ -711,7 +712,7 @@ def runByTile(key, num_bands, args):
     input_num_cols = num_bands + 1
     
     num_processes = args.num_procs
-    processes = []
+    ccdc_args = []
               
     dc = datacube.Datacube()
     
@@ -776,30 +777,11 @@ def runByTile(key, num_bands, args):
                     output_coords = "{}_{}".format(x_val, y_val)                                                                      
                     output_file = os.path.join(args.outdir, output_coords)
                                        
-                    # Block until a core becomes available
-                    while(True):
-    
-                        p_done = []
-    
-                        for index, p in enumerate(processes):
-                                    
-                            if(not p.is_alive()):
-                                p_done.append(index)
-    
-                        if(p_done):
-                            for index in sorted(p_done, reverse=True): # Need to delete in reverse order to preserve indexes
-                                del(processes[index])
-    
-                        if(len(processes) < num_processes):
-                            break
-                                        
-                    process = multiprocessing.Process(target=runCCDC, args=(input_ts, num_bands, output_file, args))
-                    processes.append(process)
-                    process.start()
+                    argslist = (input_ts, num_bands, output_file, args)
+                    ccdc_args.append(argslist)
 
-    # Keep running until all processes have finished
-    for p in processes:
-        p.join()
+    with Pool(processes=num_processes) as pool:
+        results = pool.starmap(runCCDC, ccdc_args)
         
 def loadAll(products, dc, key, bands):
     

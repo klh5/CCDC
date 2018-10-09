@@ -57,10 +57,17 @@ def getNumYears(date_list):
 
     """Get number of years (from Python/Rata Die date)"""
     
-    last_date = datetime.fromordinal(np.amax(date_list).astype(int)).strftime('%Y')
-    first_date = datetime.fromordinal(np.amin(date_list).astype(int)).strftime('%Y')
+    try:
+        last_date = datetime.fromordinal(np.amax(date_list).astype(int)).strftime('%Y')
+        first_date = datetime.fromordinal(np.amin(date_list).astype(int)).strftime('%Y')
+            
+        num_years = int(last_date) - int(first_date)
         
-    num_years = int(last_date) - int(first_date)
+    except ValueError as err:
+        print("ValueError when trying to find number of years covered by dataset: {}".format(err))
+        print(date_list)
+        
+        return 0
 
     return num_years
 

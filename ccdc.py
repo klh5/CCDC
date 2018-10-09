@@ -14,8 +14,6 @@ from datacube.api import GridWorkflow
 from makeModel import MakeCCDCModel
 from removeOutliers import RLMRemoveOutliers
 from datetime import datetime
-from osgeo import ogr
-from random import uniform
 from scipy.interpolate import interp1d
 from sklearn.externals import joblib
 from multiprocessing import Pool
@@ -477,6 +475,9 @@ def runOnPixel(key, num_bands, xmin, xmax, ymin, ymax, args):
         if(tmask_ds):               
             tmask_data = xr.concat(tmask_ds, dim='time')
             tmask_data = mask_invalid_data(tmask_data)
+            
+        print(input_data)
+        print(cloud_masks)
              
         x_val = str(float(input_data.x))
         y_val = str(float(input_data.y))

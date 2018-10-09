@@ -437,141 +437,110 @@ def loadSubset(products, dc, bands, new_point_lat, new_point_long):
         
     return ds
 
-def loadPixel(args, lat, long, num_cols, num_bands):
-    
-    """
-    Loads a single pixel (by lat/long).
-    """
-    
-    input_ds = []
-    cloud_ds = []
-    tmask_ds = []
-    
-    dc = datacube.Datacube()
-    
-    input_ds = loadSubset(args.input_products, dc, args.bands, lat, long)
+def runOnPixel(key, num_bands, xmin, xmax, ymin, ymax, args):
 
-    if(len(input_ds) == len(args.input_products)):
-        
-        if(args.tmask_products):
-            
-            tmask_ds = loadSubset(args.tmask_products, dc, ['green', 'nir', 'swir1'], lat, long)
-                
-        if(args.cloud_products):
-            
-            cloud_ds = loadSubset(args.cloud_products, dc, ['cloud_mask'], lat, long)
-                                    
-        dc.close()
-        
-        # Tidy up input data
-        input_data = xr.concat(input_ds, dim='time')
-        input_data = mask_invalid_data(input_data)
-        
-        if(cloud_ds):
-            cloud_masks = xr.concat(cloud_ds, dim='time')
-        
-        # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
-        if(tmask_ds):
-    
-            tmask_data = xr.concat(tmask_ds, dim='time')
-            tmask_data = mask_invalid_data(tmask_data)
-    
-        input_data = transformToArray(input_data)                   
-
-        if(input_data.shape[0] > 0 and input_data.shape[1] == num_cols):                       
-            
-            if(cloud_ds):                      
-                cloud_masks = transformToArray(cloud_masks)                         
-                cloud_masks = cloud_masks[np.isin(cloud_masks[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data      
-                input_data = input_data[cloud_masks[:,1] == 0] # Do masking (0 value is clear)
-                          
-            if(tmask_ds):            
-                tmask_data = transformToArray(tmask_data)         
-                tmask_data = tmask_data[np.isin(tmask_data[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data
-                input_data = doTmask(input_data, tmask_data) # Use Tmask to further screen the input data
-            
-            output_lat = "{0:.6f}".format(lat)
-            output_long = "{0:.6f}".format(long)
-            output_coords = "{}_{}".format(output_lat, output_long)    
-                                                         
-            output_file = os.path.join(args.outdir, output_coords)
-            
-            runCCDC(input_data, num_bands, output_file, args)
-                                   
-def runOnSubset(num_bands, args):
-
-    """If the user chooses to run the algorithm on a random subsample of the data, this function is called.
-        This function creates a polygon shape from the lat/long points provided by the user. It then selects
-        random points from within this shape and runs the algorithm on those points. This is quite slow because 
-        each point is loaded seperately."""
-        
+    """Lets you process data using cell keys and x/y extent.
+       A key represent one cell/area. Each cell has a tile for each time point. The x and y values define the extent of
+       the tile that should be loaded and processed."""
+       
     # Calculate the right number of columns to be returned from the data cube
     input_num_cols = num_bands + 1
     
-    # Set some spatial boundaries for the data 
-    boundary = ogr.Geometry(ogr.wkbLinearRing)
-    boundary.AddPoint(args.lowerlat, args.lowerlon) 
-    boundary.AddPoint(args.lowerlat, args.upperlon)
-    boundary.AddPoint(args.upperlat, args.upperlon)
-    boundary.AddPoint(args.upperlat, args.lowerlon)
-    boundary.AddPoint(args.lowerlat, args.lowerlon)
-
-    poly = ogr.Geometry(ogr.wkbPolygon)
-    poly.AddGeometry(boundary)
-
-    envelope = poly.GetEnvelope()
-
-    min_lat, max_lat, min_long, max_long = envelope[0], envelope[1], envelope[2], envelope[3]
-
-    num_points = args.num_points # Defaults to 100
-
-    curr_points = 0
+    input_ds = []
+    tmask_ds = []
+    cloud_ds = []
     
-    # Set up variables for using multiprocessing
-    num_processes = args.num_procs
-
-    processes = []
-
-    for i in range(num_points):
+    dc = datacube.Datacube()
+    
+    input_ds = loadByTile(args.input_products, dc, key, ymin, ymax, xmin, xmax, args.bands)                    
+                                                 
+    if(input_ds): # Check that there is actually some input data
         
-        while(curr_points < num_points):
+        if(args.tmask_products): # If tmask should be used to screen for outliers
+        
+            tmask_ds = loadByTile(args.tmask_products, dc, key,  ymin, ymax, xmin, xmax, ['green', 'nir', 'swir1']) 
+             
+        if(args.cloud_products):
+        
+            cloud_ds = loadByTile(args.cloud_products, dc, key,  ymin, ymax, xmin, xmax, ['cloud_mask']) 
+                
+        dc.close()
+                      
+        # Tidy up input data
+        input_data = xr.concat(input_ds, dim='time')
+        input_data = mask_invalid_data(input_data)
+                       
+        if(cloud_ds):            
+            cloud_masks = xr.concat(cloud_ds, dim='time')
+                          
+        # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
+        if(tmask_ds):               
+            tmask_data = xr.concat(tmask_ds, dim='time')
+            tmask_data = mask_invalid_data(tmask_data)
+             
+            x_val = str(float(input_data.x))
+            y_val = str(float(input_data.y))
             
-            new_point = ogr.Geometry(ogr.wkbPoint)
-            new_point_lat = uniform(min_lat, max_lat) # Get random latitude
-            new_point_long = uniform(min_long, max_long) # Get random longitude            
+            input_data = transformToArray(input_data) # Transform to Numpy array, sort and remove NaNs
+
+            # Check that the input data has at least 1 row and the right number of columns
+            if(input_data.shape[0] > 0 and input_data.shape[1] == input_num_cols):                 
+                
+                if(cloud_ds):                      
+                    cloud_masks = transformToArray(cloud_masks)                         
+                    cloud_masks = cloud_masks[np.isin(cloud_masks[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data      
+                    input_data = input_data[cloud_masks[:,1] == 0] # Do masking (0 value is clear)
+                                  
+                if(tmask_ds):            
+                    tmask_data = transformToArray(tmask_data)    
+
+                    tmask_data = tmask_data[np.isin(tmask_data[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data
+                    input_data = doTmask(input_data, tmask_data) # Use Tmask to further screen the input data
+                
+                output_coords = "{}_{}".format(x_val, y_val)                                                                      
+                output_file = os.path.join(args.outdir, output_coords)
+                                   
+                runCCDC(input_data, num_bands, output_file, args)
+                                                           
+def runOnSubset(num_bands, args):
+
+    """If the user chooses to run the algorithm on a random subsample of the data, this function is called.
+       It divides the number of subsamples to be taken by the number of cells/keys for a product or products.
+       It then runs CCDC on the appropriate number of pixels per cell to get an even spread of samples."""
         
-            new_point.AddPoint(new_point_lat, new_point_long) # Create new point
+    dc = datacube.Datacube()
+    
+    # Take last product as example
+    gw = GridWorkflow(dc.index, product=args.input_products[-1])
+    
+    dc.close()
+    
+    # Get key details
+    keys = gw.list_cells(product=args.input_products[-1])
+    key_list = list(keys)
 
-            if(new_point.Within(poly)):
-                
-                # Block until a core becomes available
-                    while(True):
+    num_keys = len(key_list)
     
-                        p_done = []
+    # Calculate number of pixels to use from each cell
+    samples_per_cell = np.ceil(args.num_samples / num_keys).astype(int)
     
-                        for index, p in enumerate(processes):
-                                    
-                            if(not p.is_alive()):
-                                p_done.append(index)
+    tile_args = []
+
+    for key in key_list:
     
-                        if(p_done):
-                            for index in sorted(p_done, reverse=True): # Need to delete in reverse order to preserve indexes
-                                del(processes[index])
-    
-                        if(len(processes) < num_processes):
-                            break
-                                        
-                    process = multiprocessing.Process(target=loadPixel, args=(args, new_point_lat, new_point_long, input_num_cols, num_bands))
-                    processes.append(process)
-                    process.start()
+        for i in range(samples_per_cell):
+            x_dim = keys[key].shape[1]
+            y_dim = keys[key].shape[2]
+            
+            random_x = np.random.randint(0, x_dim)
+            random_y = np.random.randint(0, y_dim)
+                             
+            argslist = (key, num_bands, random_x, random_x+1, random_y, random_y+1, args)
+            tile_args.append(argslist)
+            
+    with Pool(processes=args.num_procs) as pool:
+        pool.starmap(runOnPixel, tile_args)
                     
-                    curr_points += 1
-                    print(curr_points)
-
-    # Keep running until all processes have finished
-    for p in processes:
-        p.join()
-                
 def loadArea(products, dc, bands, lowerlat, upperlat, lowerlon, upperlon):
     
     ds = []
@@ -711,15 +680,13 @@ def runByTile(key, num_bands, args):
     # Calculate the right number of columns to be returned from the data cube
     input_num_cols = num_bands + 1
     
-    num_processes = args.num_procs
     ccdc_args = []
-              
-    dc = datacube.Datacube()
-    
     input_ds = []
     tmask_ds = []
     cloud_ds = []
-
+    
+    dc = datacube.Datacube()
+    
     input_ds = loadByTile(args.input_products, dc, key, args.tile_y_min, args.tile_y_max, args.tile_x_min, args.tile_x_max, args.bands)                    
                                                  
     if(input_ds): # Check that there is actually some input data
@@ -780,7 +747,7 @@ def runByTile(key, num_bands, args):
                     argslist = (input_ts, num_bands, output_file, args)
                     ccdc_args.append(argslist)
                         
-    with Pool(processes=num_processes) as pool:
+    with Pool(processes=args.num_procs) as pool:
         pool.starmap(runCCDC, ccdc_args)
               
 def loadAll(products, dc, key, bands):
@@ -941,7 +908,7 @@ def main(args):
     model_list = [None for i in range(num_bands)] # Set up list of models
     
     # Chec output mode
-    if(args.output_mode == "predictive"):
+    if(args.output_mode == "predictive"): # Predictive mode requires some extra parameters
         if(args.date_to_predict):
         
             new_dir = os.path.join(args.outdir, args.date_to_predict)
@@ -955,12 +922,9 @@ def main(args):
             print("Date to predict must be specified if output mode is predictive.")
             sys.exit()
                
-    if(args.lowerlat is not None and args.upperlat is not None and args.lowerlon is not None and args.upperlon is not None):
+    if(args.lowerlat is not None and args.upperlat is not None and args.lowerlon is not None and args.upperlon is not None): # User has provided lat/long boundaries
 
-        if(args.process_mode == "subsample"):
-            runOnSubset(num_bands, args)
-
-        elif(args.process_mode == "area"):
+        if(args.process_mode == "area"):
             runOnArea(num_bands, args)
             
         elif(args.process_mode == "all"):
@@ -969,7 +933,7 @@ def main(args):
         else:
             print("Lat/long boundaries were provided, but process_mode was not subsample, area, or all.")
 
-    elif(len(args.key) > 1 and args.tile_x_min is not None and args.tile_x_max is not None and args.tile_y_min is not None and args.tile_y_max is not None):
+    elif(len(args.key) > 1 and args.tile_x_min is not None and args.tile_x_max is not None and args.tile_y_min is not None and args.tile_y_max is not None):# User has provided key and xy boundaries
 
         if(args.process_mode == "tile"):
             key = tuple(args.key)
@@ -978,12 +942,15 @@ def main(args):
         else:
             print("Key/pixel details were provided, but process_mode was not tile.")
             
-    else:
-        if(args.process_mode == "csv" and args.csv_file is not None):
+    else: # User has not provided any spatial details
+        if(args.process_mode == "csv" and args.csv_file is not None): # They might have provided a CSV file to analyse
             runOnCSV(num_bands, args)
             
+        elif(args.process_mode == "subsample"): # Or want to take a subsample of the whole area
+            runOnSubset(num_bands, args)
+            
         else:
-            print("Either lat/long boundaries, pixel coordinates and cell key, or CSV file name is missing.")
+            print("You did not provide lat/long boundaries, pixel coordinates and cell key, or CSV file name, and process mode is not subsample.")
         
 
 if __name__ == "__main__":
@@ -1002,7 +969,7 @@ if __name__ == "__main__":
     parser.add_argument('-pm', '--process_mode', choices=['area','subsample', 'tile', 'all', 'csv'], default='all', help="Whether the algorithm should be run on a specified area, a subsample of a (specified) area, a specific tile, or all available data. You can also provide a CSV file to analyse.")
     parser.add_argument('-om', '--output_mode', choices=['normal','predictive'], default="normal", help="Whether the algorithm should generate change output (normal) or output a prediction for the area specified.")
     parser.add_argument('-pdate', '--date_to_predict', help="The date to predict for, if output_mode is predictive. Must be in format YYYY-MM-DD")  
-    parser.add_argument('-num', '--num_points', type=int, default=100, help="Specifies the number of subsamples to take if a random subsample is being processed.")
+    parser.add_argument('-num', '--num_samples', type=int, default=1000, help="Specifies the number of subsamples to take if a random subsample is being processed.")
     parser.add_argument('-ot', '--outtype', choices=['plot', 'csv'], default='csv', help="Specifies the format of the output data. Either a plot or a CSV file will be produced for each pixel.")
     parser.add_argument('-ip', '--input_products', nargs='+', help="The product(s) to use for change detection.")    
     parser.add_argument('-tp', '--tmask_products', nargs='+', help="The top-of-atmosphere reflectance product(s) to use for Tmask screening. If no products are specified no screening will be applied.")

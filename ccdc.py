@@ -475,9 +475,6 @@ def runOnPixel(key, num_bands, xmin, xmax, ymin, ymax, args):
         if(tmask_ds):               
             tmask_data = xr.concat(tmask_ds, dim='time')
             tmask_data = mask_invalid_data(tmask_data)
-            
-        print(input_data)
-        print(cloud_masks)
              
         x_val = str(float(input_data.x))
         y_val = str(float(input_data.y))

@@ -37,7 +37,7 @@ def addChangeMarker(num_bands, change_date, obs_data):
         
         plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=2)
         
-def setupModels(all_band_data, num_bands, init_obs):
+def setupModels(all_band_data, num_bands, init_obs, cv, alpha):
     
     """Creates a model for each band and stores it in model_list"""
     
@@ -51,7 +51,7 @@ def setupModels(all_band_data, num_bands, init_obs):
    
         ccdc_model = MakeCCDCModel(datetimes, init_obs)
             
-        ccdc_model.fitModel(band_data)
+        ccdc_model.fitModel(band_data, cv, alpha)
         
         model_list[i-1] = ccdc_model
 
@@ -175,7 +175,7 @@ def doTmask(input_ts, tmask_ts):
             
     return input_ts
 
-def initModel(pixel_data, num_bands, init_obs):
+def initModel(pixel_data, num_bands, init_obs, cv, alpha):
 
     """Finds a sequence of 6/12/18/24 consecutive clear observations without any change, to initialize the model"""
 
@@ -200,7 +200,7 @@ def initModel(pixel_data, num_bands, init_obs):
             return None
     
         # Re-initialize the models
-        setupModels(curr_obs_list, num_bands, init_obs)
+        setupModels(curr_obs_list, num_bands, init_obs, cv, alpha)
 
         # Get total time used for model initialization
         total_time = np.max(curr_obs_list[:,0]) - np.min(curr_obs_list[:,0])
@@ -238,7 +238,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
         are not enough observations remaining."""
 
     try:
-        model_data, next_obs = initModel(pixel_data, num_bands, init_obs)
+        model_data, next_obs = initModel(pixel_data, num_bands, init_obs, args.cross_validate, args.alpha)
     except TypeError:
         return []
 
@@ -273,7 +273,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             num_new_obs += 1
             
             if(num_new_obs == args.re_init):
-                setupModels(model_data, num_bands, init_obs)
+                setupModels(model_data, num_bands, init_obs, args.cross_validate, args.alpha)
                 num_new_obs = 0
                 
             change_flag = 0 # Reset change flag because we have an inlier
@@ -779,10 +779,10 @@ def runByTile(key, num_bands, args):
                                        
                     argslist = (input_ts, num_bands, output_file, args)
                     ccdc_args.append(argslist)
-
+                        
     with Pool(processes=num_processes) as pool:
-        results = pool.starmap(runCCDC, ccdc_args)
-        
+        pool.starmap(runCCDC, ccdc_args)
+              
 def loadAll(products, dc, key, bands):
     
     ds = []
@@ -922,8 +922,8 @@ def runOnCSV(num_bands, args):
 
     ts_data.datetime = dateToNumber(ts_data.datetime)
     
-    runCCDC(ts_data.values, num_bands, output_file, args)
-  
+    runCCDC(ts_data.values, num_bands, output_file, args)       
+      
 def main(args):
     
     """Program runs from here"""
@@ -977,7 +977,7 @@ def main(args):
 
         else:
             print("Key/pixel details were provided, but process_mode was not tile.")
-
+            
     else:
         if(args.process_mode == "csv" and args.csv_file is not None):
             runOnCSV(num_bands, args)
@@ -1012,9 +1012,11 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--save_models', action='store_true', help="Add this flag if models should be pickled.")
     parser.add_argument('-b', '--bands', nargs='+', required=True, help="List of band names to use in the analysis.")    
     parser.add_argument('-csv', '--csv_file', help="The CSV file to use, if process mode is CSV.")
+    parser.add_argument('-a', '--alpha', type=float, default=1.0, help="Alpha parameter for Lasso regression. Defaults to 1.0.")
+    parser.add_argument('-cv', '--cross_validate', default=False, action='store_true', help="Whether to use cross validation to find alpha parameter. If set the --alpha argument will be ignored.")
     
     args = parser.parse_args()
-    
+      
     main(args)
 
 

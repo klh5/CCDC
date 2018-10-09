@@ -20,9 +20,10 @@ class MakeCCDCModel(object):
         self.predicted = None
         self.start_val = None
         self.end_val = None
+        self.alpha = None
         self.init_obs = init_obs
 
-    def fitModel(self, band_data):
+    def fitModel(self, band_data, cv, alpha):
         
         self.start_val = band_data[0]
         self.end_val = band_data[-1]
@@ -44,10 +45,13 @@ class MakeCCDCModel(object):
     
         x = x.T
 
-        clf = linear_model.Lasso(fit_intercept=True, alpha=1, max_iter=50)
-        
-        self.lasso_model = clf.fit(x, band_data)
-        
+        if(cv): # If cross validation should be used to find alpha parameter
+            self.lasso_model = linear_model.LassoCV(fit_intercept=True, max_iter=50).fit(x, band_data)
+            self.alpha = self.lasso_model.alpha_
+        else:
+            self.lasso_model = linear_model.Lasso(fit_intercept=True, alpha=alpha, max_iter=50).fit(x, band_data)
+            self.alpha = alpha
+                                
         self.predicted = self.lasso_model.predict(x)
         
         self.coefficients = self.lasso_model.coef_

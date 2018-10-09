@@ -478,29 +478,29 @@ def runOnPixel(key, num_bands, xmin, xmax, ymin, ymax, args):
             tmask_data = xr.concat(tmask_ds, dim='time')
             tmask_data = mask_invalid_data(tmask_data)
              
-            x_val = str(float(input_data.x))
-            y_val = str(float(input_data.y))
+        x_val = str(float(input_data.x))
+        y_val = str(float(input_data.y))
+        
+        input_data = transformToArray(input_data) # Transform to Numpy array, sort and remove NaNs
+
+        # Check that the input data has at least 1 row and the right number of columns
+        if(input_data.shape[0] > 0 and input_data.shape[1] == input_num_cols):                 
             
-            input_data = transformToArray(input_data) # Transform to Numpy array, sort and remove NaNs
+            if(cloud_ds):                      
+                cloud_masks = transformToArray(cloud_masks)                         
+                cloud_masks = cloud_masks[np.isin(cloud_masks[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data      
+                input_data = input_data[cloud_masks[:,1] == 0] # Do masking (0 value is clear)
+                              
+            if(tmask_ds):            
+                tmask_data = transformToArray(tmask_data)    
 
-            # Check that the input data has at least 1 row and the right number of columns
-            if(input_data.shape[0] > 0 and input_data.shape[1] == input_num_cols):                 
-                
-                if(cloud_ds):                      
-                    cloud_masks = transformToArray(cloud_masks)                         
-                    cloud_masks = cloud_masks[np.isin(cloud_masks[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data      
-                    input_data = input_data[cloud_masks[:,1] == 0] # Do masking (0 value is clear)
-                                  
-                if(tmask_ds):            
-                    tmask_data = transformToArray(tmask_data)    
-
-                    tmask_data = tmask_data[np.isin(tmask_data[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data
-                    input_data = doTmask(input_data, tmask_data) # Use Tmask to further screen the input data
-                
-                output_coords = "{}_{}".format(x_val, y_val)                                                                      
-                output_file = os.path.join(args.outdir, output_coords)
-                                   
-                runCCDC(input_data, num_bands, output_file, args)
+                tmask_data = tmask_data[np.isin(tmask_data[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data
+                input_data = doTmask(input_data, tmask_data) # Use Tmask to further screen the input data
+            
+            output_coords = "{}_{}".format(x_val, y_val)                                                                      
+            output_file = os.path.join(args.outdir, output_coords)
+                               
+            runCCDC(input_data, num_bands, output_file, args)
                                                            
 def runOnSubset(num_bands, args):
 

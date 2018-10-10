@@ -310,7 +310,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
                 for model_num, model in enumerate(model_list):
                     pkl_file = "{}_{}_{}_{}.pkl".format(change_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), args.bands[model_num])
                     joblib.dump(model.lasso_model, pkl_file) 
-                    rmse_file = "{}_{}_{}_{}_RMSE.pkl".format(output_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), args.bands[model_num])
+                    rmse_file = "{}_{}_{}_{}.pkl".format(change_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), args.bands[model_num])
                     joblib.dump(model.RMSE, rmse_file) 
                                
             return pixel_data[next_obs-5:,] # Return index of date when change was first flagged

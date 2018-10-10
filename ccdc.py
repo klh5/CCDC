@@ -309,7 +309,9 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             if(args.save_models):
                 for model_num, model in enumerate(model_list):
                     pkl_file = "{}_{}_{}_{}.pkl".format(change_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), args.bands[model_num])
-                    joblib.dump(model, pkl_file) 
+                    joblib.dump(model.lasso_model, pkl_file) 
+                    rmse_file = "{}_{}_{}_{}_RMSE.pkl".format(output_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), args.bands[model_num])
+                    joblib.dump(model.RMSE, rmse_file) 
                                
             return pixel_data[next_obs-5:,] # Return index of date when change was first flagged
         
@@ -427,7 +429,9 @@ def runCCDC(input_data, num_bands, output_file, args):
         if(args.save_models):
             for model_num, model in enumerate(model_list):
                 pkl_file = "{}_{}_{}_{}.pkl".format(output_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), args.bands[model_num])
-                joblib.dump(model, pkl_file) 
+                joblib.dump(model.lasso_model, pkl_file) 
+                rmse_file = "{}_{}_{}_{}_RMSE.pkl".format(output_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), args.bands[model_num])
+                joblib.dump(model.RMSE, rmse_file) 
                              
 def loadSubset(products, bands, new_point_lat, new_point_long):
     

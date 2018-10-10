@@ -900,8 +900,7 @@ def main(args):
     
     """Program runs from here"""
 
-    if(not os.path.isdir(args.outdir)):
-       os.makedirs(args.outdir)
+    os.makedirs(os.path.dirname(args.outdir), exist_ok=True)
        
     if(not args.input_products and not args.csv_file):
         print("Either a list of Data Cube products or a CSV file is required for input.")

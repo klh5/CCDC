@@ -429,13 +429,17 @@ def runCCDC(input_data, num_bands, output_file, args):
                 pkl_file = "{}_{}_{}_{}.pkl".format(output_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), args.bands[model_num])
                 joblib.dump(model, pkl_file) 
                              
-def loadSubset(products, dc, bands, new_point_lat, new_point_long):
+def loadSubset(products, bands, new_point_lat, new_point_long):
     
     ds = []
     
     for product in products:
+        
+        dc = datacube.Datacube()
     
         dataset = dc.load(product=product, measurements=bands, lat=(new_point_lat), lon=(new_point_long), group_by='solar_day')
+        
+        dc.close()
     
         if(dataset.variables):
             ds.append(dataset) 
@@ -454,22 +458,18 @@ def runOnPixel(key, num_bands, xmin, xmax, ymin, ymax, args):
     input_ds = []
     tmask_ds = []
     cloud_ds = []
-    
-    dc = datacube.Datacube()
-    
-    input_ds = loadByTile(args.input_products, dc, key, ymin, ymax, xmin, xmax, args.bands)                    
+       
+    input_ds = loadByTile(args.input_products, key, ymin, ymax, xmin, xmax, args.bands)                    
                                                  
     if(input_ds): # Check that there is actually some input data
         
         if(args.tmask_products): # If tmask should be used to screen for outliers
         
-            tmask_ds = loadByTile(args.tmask_products, dc, key,  ymin, ymax, xmin, xmax, ['green', 'nir', 'swir1']) 
+            tmask_ds = loadByTile(args.tmask_products, key,  ymin, ymax, xmin, xmax, ['green', 'nir', 'swir1']) 
              
         if(args.cloud_products):
         
-            cloud_ds = loadByTile(args.cloud_products, dc, key,  ymin, ymax, xmin, xmax, ['cloud_mask']) 
-                
-        dc.close()
+            cloud_ds = loadByTile(args.cloud_products, key,  ymin, ymax, xmin, xmax, ['cloud_mask']) 
                       
         # Tidy up input data
         input_data = xr.concat(input_ds, dim='time')
@@ -546,12 +546,17 @@ def runOnSubset(num_bands, args):
     with Pool(processes=args.num_procs) as pool:
         pool.starmap(runOnPixel, tile_args)
                     
-def loadArea(products, dc, bands, lowerlat, upperlat, lowerlon, upperlon):
+def loadArea(products, bands, lowerlat, upperlat, lowerlon, upperlon):
     
     ds = []
     
     for product in products:
+        
+        dc = datacube.Datacube()
+        
         dataset = dc.load(product=product, measurements=bands, lat=(lowerlat, upperlat), lon=(lowerlon, upperlon), group_by='solar_day')
+        
+        dc.close()
         
         if(dataset.variables):
             ds.append(dataset)
@@ -573,23 +578,19 @@ def runOnArea(num_bands, args):
     num_processes = args.num_procs
     
     processes = [] 
-
-    dc = datacube.Datacube()
     
-    input_ds = loadArea(args.input_products, dc, args.bands, args.lowerlat, args.upperlat, args.lowerlon, args.upperlon)
+    input_ds = loadArea(args.input_products, args.bands, args.lowerlat, args.upperlat, args.lowerlon, args.upperlon)
 
     if(len(input_ds) == len(args.input_products)):
   
         if(args.tmask_products):
             
-            tmask_ds = loadArea(args.tmask_products, dc, ['green', 'nir', 'swir1'], args.lowerlat, args.upperlat, args.lowerlon, args.upperlon)
+            tmask_ds = loadArea(args.tmask_products, ['green', 'nir', 'swir1'], args.lowerlat, args.upperlat, args.lowerlon, args.upperlon)
                       
         if(args.cloud_products):
             
-            cloud_ds = loadArea(args.cloud_products, dc, ['cloud_mask'], args.lowerlat, args.upperlat, args.lowerlon, args.upperlon)            
-            
-        dc.close()
-             
+            cloud_ds = loadArea(args.cloud_products, ['cloud_mask'], args.lowerlat, args.upperlat, args.lowerlon, args.upperlon)            
+                         
         # Tidy up input data
         input_data = xr.concat(input_ds, dim='time')
         input_data = mask_invalid_data(input_data)
@@ -655,17 +656,21 @@ def runOnArea(num_bands, args):
     for p in processes:
         p.join()
         
-def loadByTile(products, dc, key, min_y, max_y, min_x, max_x, bands):
+def loadByTile(products, key, min_y, max_y, min_x, max_x, bands):
     
     ds = []
     
     for product in products:
+        
+        dc = datacube.Datacube()
 
         # Create the GridWorkflow object for this product
         curr_gw = GridWorkflow(dc.index, product=product)
     
         # Get the list of tiles (one for each time point) for this product
         tile_list = curr_gw.list_tiles(product=product, cell_index=key, group_by='solar_day')
+        
+        dc.close()
     
         # Retrieve the specified pixel for each tile in the list
         for tile_index, tile in tile_list.items():
@@ -689,23 +694,19 @@ def runByTile(key, num_bands, args):
     input_ds = []
     tmask_ds = []
     cloud_ds = []
-    
-    dc = datacube.Datacube()
-    
-    input_ds = loadByTile(args.input_products, dc, key, args.tile_y_min, args.tile_y_max, args.tile_x_min, args.tile_x_max, args.bands)                    
+        
+    input_ds = loadByTile(args.input_products, key, args.tile_y_min, args.tile_y_max, args.tile_x_min, args.tile_x_max, args.bands)                    
                                                  
     if(input_ds): # Check that there is actually some input data
         
         if(args.tmask_products): # If tmask should be used to screen for outliers
         
-            tmask_ds = loadByTile(args.tmask_products, dc, key, args.tile_y_min, args.tile_y_max, args.tile_x_min, args.tile_x_max, ['green', 'nir', 'swir1']) 
+            tmask_ds = loadByTile(args.tmask_products, key, args.tile_y_min, args.tile_y_max, args.tile_x_min, args.tile_x_max, ['green', 'nir', 'swir1']) 
              
         if(args.cloud_products):
         
-            cloud_ds = loadByTile(args.cloud_products, dc, key, args.tile_y_min, args.tile_y_max, args.tile_x_min, args.tile_x_max, ['cloud_mask']) 
-                
-        dc.close()
-                      
+            cloud_ds = loadByTile(args.cloud_products, key, args.tile_y_min, args.tile_y_max, args.tile_x_min, args.tile_x_max, ['cloud_mask']) 
+                                    
         # Tidy up input data
         input_data = xr.concat(input_ds, dim='time')
         input_data = mask_invalid_data(input_data)
@@ -755,16 +756,20 @@ def runByTile(key, num_bands, args):
     with Pool(processes=args.num_procs) as pool:
         pool.starmap(runCCDC, ccdc_args)
               
-def loadAll(products, dc, key, bands):
+def loadAll(products, key, bands):
     
     ds = []
     
     for product in products:
+        
+        dc = datacube.Datacube()
 
         gw = GridWorkflow(dc.index, product=product)
     
         # Get the list of tiles (one for each time point) for this product
         tile_list = gw.list_tiles(product=product, cell_index=key, group_by='solar_day')
+        
+        dc.close()
     
         # Load all tiles
         for tile_index, tile in tile_list.items():
@@ -793,26 +798,26 @@ def runAll(num_bands, args):
     # Get list of cell keys for most recent dataset
     keys = list(gw.list_cells(product=args.input_products[-1], lat=(args.lowerlat, args.upperlat), lon=(args.lowerlon, args.upperlon)).keys())
 
+    dc.close()
+    
     for key in keys:
 
         input_ds = []
         tmask_ds = []
         cloud_ds = []
 
-        input_ds = loadAll(args.input_products, dc, key, args.bands)
+        input_ds = loadAll(args.input_products, key, args.bands)
         
         if(input_ds):
                     
             if(args.tmask_products):
                 
-                tmask_ds = loadAll(args.tmask_products, dc, key, ['green', 'nir', 'swir1'])
+                tmask_ds = loadAll(args.tmask_products, key, ['green', 'nir', 'swir1'])
                 
             if(args.cloud_products):
                 
-                cloud_ds = loadAll(args.cloud_products, dc, key, ['cloud_mask'])
-                                                                   
-            dc.close()
-        
+                cloud_ds = loadAll(args.cloud_products, key, ['cloud_mask'])
+                                                                         
             # Tidy up input data
             input_data = xr.concat(input_ds, dim='time')
             input_data = mask_invalid_data(input_data)

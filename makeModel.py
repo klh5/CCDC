@@ -46,10 +46,10 @@ class MakeCCDCModel(object):
         x = x.T
 
         if(cv): # If cross validation should be used to find alpha parameter
-            self.lasso_model = linear_model.LassoCV(fit_intercept=True, max_iter=50).fit(x, band_data)
+            self.lasso_model = linear_model.LassoCV(fit_intercept=True).fit(x, band_data)
             self.alpha = self.lasso_model.alpha_
         else:
-            self.lasso_model = linear_model.Lasso(fit_intercept=True, alpha=alpha, max_iter=50).fit(x, band_data)
+            self.lasso_model = linear_model.Lasso(fit_intercept=True, alpha=alpha).fit(x, band_data)
             self.alpha = alpha
                                 
         self.predicted = self.lasso_model.predict(x)

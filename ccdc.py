@@ -428,123 +428,118 @@ def runCCDC(input_data, num_bands, output_file, args):
             for model_num, model in enumerate(model_list):
                 pkl_file = "{}_{}_{}_{}.pkl".format(output_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), args.bands[model_num])
                 joblib.dump(model, pkl_file) 
-                         
-def loadSubset(products, bands, new_point_lat, new_point_long):
-    
-    ds = []
-    
-    for product in products:
-        
-        dc = datacube.Datacube()
-    
-        dataset = dc.load(product=product, measurements=bands, lat=(new_point_lat), lon=(new_point_long), group_by='solar_day')
-        
-        dc.close()
-    
-        if(dataset.variables):
-            ds.append(dataset) 
-        
-    return ds
-
-def runOnPixel(key, num_bands, xmin, xmax, ymin, ymax, args):
-
-    """Lets you process data using cell keys and x/y extent.
-       A key represent one cell/area. Each cell has a tile for each time point. The x and y values define the extent of
-       the tile that should be loaded and processed."""
-       
-    # Calculate the right number of columns to be returned from the data cube
-    input_num_cols = num_bands + 1
-    
-    input_ds = []
-    tmask_ds = []
-    cloud_ds = []
-       
-    input_ds = loadByTile(args.input_products, key, ymin, ymax, xmin, xmax, args.bands)                    
-                                                 
-    if(input_ds): # Check that there is actually some input data
-        
-        if(args.tmask_products): # If tmask should be used to screen for outliers
-        
-            tmask_ds = loadByTile(args.tmask_products, key,  ymin, ymax, xmin, xmax, ['green', 'nir', 'swir1']) 
-             
-        if(args.cloud_products):
-        
-            cloud_ds = loadByTile(args.cloud_products, key,  ymin, ymax, xmin, xmax, ['cloud_mask']) 
-                      
-        # Tidy up input data
-        input_data = xr.concat(input_ds, dim='time')
-        input_data = mask_invalid_data(input_data)
-                       
-        if(cloud_ds):            
-            cloud_masks = xr.concat(cloud_ds, dim='time')
-                          
-        # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
-        if(tmask_ds):               
-            tmask_data = xr.concat(tmask_ds, dim='time')
-            tmask_data = mask_invalid_data(tmask_data)
-             
-        x_val = str(float(input_data.x))
-        y_val = str(float(input_data.y))
-        
-        input_data = transformToArray(input_data) # Transform to Numpy array, sort and remove NaNs
-
-        # Check that the input data has at least 1 row and the right number of columns
-        if(input_data.shape[0] > 0 and input_data.shape[1] == input_num_cols):                 
-            
-            if(cloud_ds):                      
-                cloud_masks = transformToArray(cloud_masks)                         
-                cloud_masks = cloud_masks[np.isin(cloud_masks[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data      
-                input_data = input_data[cloud_masks[:,1] == 0] # Do masking (0 value is clear)
-                              
-            if(tmask_ds):            
-                tmask_data = transformToArray(tmask_data)    
-
-                tmask_data = tmask_data[np.isin(tmask_data[:,0], input_data[:,0])] # Remove any rows which aren't in the SREF data
-                input_data = doTmask(input_data, tmask_data) # Use Tmask to further screen the input data
-            
-            output_coords = "{}_{}".format(x_val, y_val)                                                                      
-            output_file = os.path.join(args.outdir, output_coords)
-                               
-            runCCDC(input_data, num_bands, output_file, args)
-                                                           
+                                                                                   
 def runOnSubset(num_bands, args):
 
     """If the user chooses to run the algorithm on a random subsample of the data, this function is called.
        It divides the number of subsamples to be taken by the number of cells/keys for a product or products.
        It then runs CCDC on the appropriate number of pixels per cell to get an even spread of samples."""
         
-    dc = datacube.Datacube()
+    # Calculate the right number of columns to be returned from the data cube
+    input_num_cols = num_bands + 1    
     
-    # Take last product as example
+    dc = datacube.Datacube()
+
+    # Create Gridworkflow object for most recent dataset
     gw = GridWorkflow(dc.index, product=args.input_products[-1])
+
+    # Get list of cell keys for most recent dataset
+    keys = list(gw.list_cells(product=args.input_products[-1]).keys())
     
     dc.close()
     
-    # Get key details
-    keys = gw.list_cells(product=args.input_products[-1])
-    key_list = list(keys)
-
-    num_keys = len(key_list)
+    num_keys = len(keys)
     
     # Calculate number of pixels to use from each cell
     samples_per_cell = np.ceil(args.num_samples / num_keys).astype(int)
-    
-    tile_args = []
+        
+    # Load data for each cell
+    for key in keys:
+        
+        print(key)
 
-    for key in key_list:
-    
-        for i in range(samples_per_cell):
-            x_dim = keys[key].shape[1]
-            y_dim = keys[key].shape[2]
+        input_ds = []
+        tmask_ds = []
+        cloud_ds = []
+
+        input_ds = loadAll(args.input_products, key, args.bands)
+        
+        if(input_ds):
+                    
+            if(args.tmask_products):
+                
+                tmask_ds = loadAll(args.tmask_products, key, ['green', 'nir', 'swir1'])
+                
+            if(args.cloud_products):
+                
+                cloud_ds = loadAll(args.cloud_products, key, ['cloud_mask'])
+                                                                         
+            # Tidy up input data
+            input_data = xr.concat(input_ds, dim='time')
+            input_data = mask_invalid_data(input_data)
             
-            random_x = np.random.randint(0, x_dim)
-            random_y = np.random.randint(0, y_dim)
-                             
-            argslist = (key, num_bands, random_x, random_x+1, random_y, random_y+1, args)
-            tile_args.append(argslist)
+            if(cloud_ds):
+                
+                cloud_masks = xr.concat(cloud_ds, dim='time')
+                        
+            # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
+            if(tmask_ds):
+                
+                tmask_data = xr.concat(tmask_ds, dim='time')
+                tmask_data = mask_invalid_data(tmask_data)
+                       
+            ccdc_args = []
             
-    with Pool(processes=args.num_procs) as pool:
-        pool.starmap(runOnPixel, tile_args)
+            curr_samples = 0
+            
+            # We want to process a random subset of pixels
+            while(curr_samples < samples_per_cell):
+                
+                x_dim = keys[key].shape[1]
+                y_dim = keys[key].shape[2]
+            
+                random_x = np.random.randint(0, x_dim)
+                random_y = np.random.randint(0, y_dim)
+                                                          
+                input_ts = input_data.isel(x=random_x, y=random_y) # Get just one pixel
+                
+                x_val = str(float(input_ts.x))
+                y_val = str(float(input_ts.y))
+
+                input_ts = transformToArray(input_ts) # Transform the time series into a numpy array                    
+                                          
+                if(input_ts.shape[0] > 0 and input_ts.shape[1] == input_num_cols):
+                    
+                    curr_samples += 1
+                    print(curr_samples)
+                    
+                    if(cloud_ds):
+                        
+                        cloud_ts = cloud_masks.isel(x=random_x, y=random_y) # Get cloud mask values through time for this pixel
+                        
+                        cloud_ts = transformToArray(cloud_ts)                         
+                        cloud_ts = cloud_ts[np.isin(cloud_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data      
+                        input_ts = input_ts[cloud_ts[:,1] == 0] # Do masking (0 value is clear)
+                        
+                    if(tmask_ds):
+                        
+                        tmask_ts = tmask_data.isel(x=random_x, y=random_y)
+                        
+                        tmask_ts = transformToArray(tmask_ts)         
+                        tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
+                        input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data    
+                                                    
+                    output_coords = "{}_{}".format(x_val, y_val)                                                                      
+                    output_file = os.path.join(args.outdir, output_coords)
+                        
+                    argslist = (input_ts, num_bands, output_file, args)
+                    ccdc_args.append(argslist)
+        
+        # Use multiprocessing to process all samples from this tile            
+        with Pool(processes=args.num_procs) as pool:    
+            pool.starmap(runCCDC, ccdc_args)
+        
+        print("Key done")                        
                     
 def loadArea(products, bands, lowerlat, upperlat, lowerlon, upperlon):
     

@@ -326,7 +326,7 @@ def runCCDC(input_data, num_bands, output_file, args):
 
     # Get the number of years covered by the dataset
     num_years = getNumYears(input_data[:,0])
-    
+    print(input_data)    
     # The algorithm needs at least 1 year of data (after any screening)
     if(num_years > 0 and len(input_data) >= 6):
         
@@ -456,7 +456,7 @@ def runOnSubset(num_bands, args):
     # Calculate number of pixels to use from each cell
     num_subs = ((tile_size / new_tile_size) * (tile_size / new_tile_size)) * num_keys # Get number of sub-tiles
     samples_per_cell = np.ceil(args.num_samples / num_subs).astype(int) # Get number of samples to be taken per sub-tile
-           
+            
     # Load data for each cell
     for key in keys:
                
@@ -500,25 +500,21 @@ def runOnSubset(num_bands, args):
                         tmask_data = mask_invalid_data(tmask_data)
                                
                     ccdc_args = []
-                    
-                    curr_samples = 0
-                    
+                                   
                     # We want to process a random subset of pixels
-                    while(curr_samples < samples_per_cell):
+                    for i in range(samples_per_cell):
                                            
                         random_x = np.random.randint(0, new_tile_size)
                         random_y = np.random.randint(0, new_tile_size)
-                                                                  
+                                                                
                         input_ts = input_data.isel(x=random_x, y=random_y) # Get just one pixel
                         
                         x_val = str(float(input_ts.x))
                         y_val = str(float(input_ts.y))
         
                         input_ts = transformToArray(input_ts) # Transform the time series into a numpy array                    
-                                                  
+                                               
                         if(input_ts.shape[0] > 0 and input_ts.shape[1] == input_num_cols):
-                            
-                            curr_samples += 1
                             
                             if(cloud_ds):
                                 
@@ -544,8 +540,8 @@ def runOnSubset(num_bands, args):
                 
                 # Use multiprocessing to process all samples from this tile            
                 with Pool(processes=args.num_procs) as pool:    
-                    pool.starmap(runCCDC, ccdc_args)
-                                                  
+                    pool.starmap(runCCDC, ccdc_args)            
+                                          
 def loadArea(products, bands, lowerlat, upperlat, lowerlon, upperlon):
     
     ds = []

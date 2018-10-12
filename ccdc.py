@@ -326,7 +326,7 @@ def runCCDC(input_data, num_bands, output_file, args):
 
     # Get the number of years covered by the dataset
     num_years = getNumYears(input_data[:,0])
-    print(input_data)    
+  
     # The algorithm needs at least 1 year of data (after any screening)
     if(num_years > 0 and len(input_data) >= 6):
         

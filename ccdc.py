@@ -743,12 +743,16 @@ def runByTile(key, num_bands, args):
                         tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
                         input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data
                     
-                    output_coords = "{}_{}".format(x_val, y_val)                                                                      
-                    output_file = os.path.join(args.outdir, output_coords)
-                                       
+                    # Create output directory                                                                      
+                    output_dir = os.path.join(args.outdir, "{}_{}/".format(x_val, y_val))
+                    os.makedirs(os.path.dirname(output_dir), exist_ok=True)
+                    
+                    # Create file name
+                    output_file = os.path.join(output_dir, "{}_{}".format(x_val, y_val))
+                                     
                     argslist = (input_ts, num_bands, output_file, args)
                     ccdc_args.append(argslist)
-                        
+                                                              
     with Pool(processes=args.num_procs) as pool:
         pool.starmap(runCCDC, ccdc_args)
               

@@ -532,8 +532,12 @@ def runOnSubset(num_bands, args):
                                 tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
                                 input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data    
                                                             
-                            output_coords = "{}_{}".format(x_val, y_val)                                                                      
-                            output_file = os.path.join(args.outdir, output_coords)
+                            # Create output directory                                                                      
+                            output_dir = os.path.join(args.outdir, "{}_{}/".format(x_val, y_val))
+                            os.makedirs(os.path.dirname(output_dir), exist_ok=True)
+                    
+                            # Create file name
+                            output_file = os.path.join(output_dir, "{}_{}".format(x_val, y_val))
                                 
                             argslist = (input_ts, num_bands, output_file, args)
                             ccdc_args.append(argslist)
@@ -604,7 +608,7 @@ def runOnArea(num_bands, args):
                 input_ts = input_data.isel(x=i, y=j)
                 
                 x_val = str(float(input_ts.x))
-                y_val = str(float(input_ts.x))
+                y_val = str(float(input_ts.y))
        
                 input_ts = transformToArray(input_ts)               
     
@@ -624,8 +628,12 @@ def runOnArea(num_bands, args):
                         tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
                         input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data
                           
-                    output_coords = "{}_{}".format(x_val, y_val)                                                                      
-                    output_file = os.path.join(args.outdir, output_coords)
+                    # Create output directory                                                                      
+                    output_dir = os.path.join(args.outdir, "{}_{}/".format(x_val, y_val))
+                    os.makedirs(os.path.dirname(output_dir), exist_ok=True)
+                    
+                    # Create file name
+                    output_file = os.path.join(output_dir, "{}_{}".format(x_val, y_val))
                     
                     # Block until a core becomes available
                     while(True):
@@ -861,8 +869,12 @@ def runAll(num_bands, args):
                             tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
                             input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data    
                                                         
-                        output_coords = "{}_{}".format(x_val, y_val)                                                                      
-                        output_file = os.path.join(args.outdir, output_coords)
+                        # Create output directory                                                                      
+                        output_dir = os.path.join(args.outdir, "{}_{}/".format(x_val, y_val))
+                        os.makedirs(os.path.dirname(output_dir), exist_ok=True)
+                    
+                        # Create file name
+                        output_file = os.path.join(output_dir, "{}_{}".format(x_val, y_val))
                         
                         # Block until a core becomes available
                         while(True):

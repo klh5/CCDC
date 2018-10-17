@@ -15,7 +15,7 @@ from makeModel import MakeCCDCModel
 from removeOutliers import RLMRemoveOutliers
 from datetime import datetime
 from scipy.interpolate import interp1d
-from sklearn.externals import joblib
+import pickle
 from multiprocessing import Pool
 
 plt_list = []        # List of plots, one for each band
@@ -308,8 +308,9 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             # Pickle current models
             if(args.save_models):
                 for model_num, model in enumerate(model_list):
-                    pkl_file = "{}_{}_{}_{}.pkl".format(change_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), args.bands[model_num])
-                    joblib.dump(model, pkl_file) 
+                    pkl_file = "{}.pkl".format(change_file.rsplit('.', 1)[0])
+                    with open(pkl_file, "ab") as outfile:
+                        pickle.dump(model, outfile) 
                                
             return pixel_data[next_obs-5:,] # Return index of date when change was first flagged
         
@@ -426,8 +427,9 @@ def runCCDC(input_data, num_bands, output_file, args):
         # Save final models if requested
         if(args.save_models):
             for model_num, model in enumerate(model_list):
-                pkl_file = "{}_{}_{}_{}.pkl".format(output_file.rsplit('.', 1)[0], model.getMinDate(), model.getMaxDate(), args.bands[model_num])
-                joblib.dump(model, pkl_file) 
+                pkl_file = "{}.pkl".format(output_file.rsplit('.', 1)[0])
+                with open(pkl_file, "ab") as outfile:
+                    pickle.dump(model, outfile) 
                                                                                    
 def runOnSubset(num_bands, args):
 
@@ -532,12 +534,8 @@ def runOnSubset(num_bands, args):
                                 tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
                                 input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data    
                                                             
-                            # Create output directory                                                                      
-                            output_dir = os.path.join(args.outdir, "{}_{}/".format(x_val, y_val))
-                            os.makedirs(os.path.dirname(output_dir), exist_ok=True)
-                    
                             # Create file name
-                            output_file = os.path.join(output_dir, "{}_{}".format(x_val, y_val))
+                            output_file = os.path.join(args.outdir, "{}_{}".format(x_val, y_val))
                                 
                             argslist = (input_ts, num_bands, output_file, args)
                             ccdc_args.append(argslist)
@@ -627,13 +625,9 @@ def runOnArea(num_bands, args):
                         tmask_ts = transformToArray(tmask_ts)         
                         tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
                         input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data
-                          
-                    # Create output directory                                                                      
-                    output_dir = os.path.join(args.outdir, "{}_{}/".format(x_val, y_val))
-                    os.makedirs(os.path.dirname(output_dir), exist_ok=True)
-                    
+
                     # Create file name
-                    output_file = os.path.join(output_dir, "{}_{}".format(x_val, y_val))
+                    output_file = os.path.join(args.outdir, "{}_{}".format(x_val, y_val))
                     
                     # Block until a core becomes available
                     while(True):
@@ -751,12 +745,8 @@ def runByTile(key, num_bands, args):
                         tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
                         input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data
                     
-                    # Create output directory                                                                      
-                    output_dir = os.path.join(args.outdir, "{}_{}/".format(x_val, y_val))
-                    os.makedirs(os.path.dirname(output_dir), exist_ok=True)
-                    
                     # Create file name
-                    output_file = os.path.join(output_dir, "{}_{}".format(x_val, y_val))
+                    output_file = os.path.join(args.outdir, "{}_{}".format(x_val, y_val))
                                      
                     argslist = (input_ts, num_bands, output_file, args)
                     ccdc_args.append(argslist)
@@ -869,12 +859,8 @@ def runAll(num_bands, args):
                             tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
                             input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data    
                                                         
-                        # Create output directory                                                                      
-                        output_dir = os.path.join(args.outdir, "{}_{}/".format(x_val, y_val))
-                        os.makedirs(os.path.dirname(output_dir), exist_ok=True)
-                    
                         # Create file name
-                        output_file = os.path.join(output_dir, "{}_{}".format(x_val, y_val))
+                        output_file = os.path.join(args.outdir, "{}_{}".format(x_val, y_val))
                         
                         # Block until a core becomes available
                         while(True):

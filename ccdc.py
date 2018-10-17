@@ -35,7 +35,7 @@ def addChangeMarker(num_bands, change_date, obs_data):
         
         plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=2)
         
-def setupModels(all_band_data, num_bands, init_obs, cv, alpha):
+def setupModels(all_band_data, num_bands, init_obs, cv, alpha, bands):
     
     """Creates a model for each band and stores it in model_list"""
     
@@ -47,7 +47,7 @@ def setupModels(all_band_data, num_bands, init_obs, cv, alpha):
         
         band_data = all_band_data[:,i]
    
-        ccdc_model = MakeCCDCModel(datetimes, init_obs)
+        ccdc_model = MakeCCDCModel(datetimes, init_obs, bands[i-1])
             
         ccdc_model.fitModel(band_data, cv, alpha)
         
@@ -180,7 +180,7 @@ def doTmask(input_ts, tmask_ts):
             
     return input_ts
 
-def initModel(pixel_data, num_bands, init_obs, cv, alpha):
+def initModel(pixel_data, num_bands, init_obs, cv, alpha, bands):
 
     """Finds a sequence of 6/12/18/24 consecutive clear observations without any change, to initialize the model"""
 
@@ -205,7 +205,7 @@ def initModel(pixel_data, num_bands, init_obs, cv, alpha):
             return None
     
         # Re-initialize the models
-        setupModels(curr_obs_list, num_bands, init_obs, cv, alpha)
+        setupModels(curr_obs_list, num_bands, init_obs, cv, alpha, bands)
 
         # Get total time used for model initialization
         total_time = np.max(curr_obs_list[:,0]) - np.min(curr_obs_list[:,0])
@@ -243,7 +243,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
         are not enough observations remaining."""
 
     try:
-        model_data, next_obs = initModel(pixel_data, num_bands, init_obs, args.cross_validate, args.alpha)
+        model_data, next_obs = initModel(pixel_data, num_bands, init_obs, args.cross_validate, args.alpha, args.bands)
     except TypeError:
         return []
 
@@ -278,7 +278,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             num_new_obs += 1
             
             if(num_new_obs == args.re_init):
-                setupModels(model_data, num_bands, init_obs, args.cross_validate, args.alpha)
+                setupModels(model_data, num_bands, init_obs, args.cross_validate, args.alpha, args.bands)
                 num_new_obs = 0
                 
             change_flag = 0 # Reset change flag because we have an inlier

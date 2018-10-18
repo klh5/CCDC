@@ -4,13 +4,14 @@ from datetime import datetime
 
 class MakeCCDCModel(object):
 
-    def __init__(self, datetimes, init_obs):
+    def __init__(self, datetimes, init_obs, band):
         
         self.T = 365.25
         self.pi_val_simple = (2 * np.pi) / self.T
         self.pi_val_advanced = (4 * np.pi) / self.T
         self.pi_val_full = (6 * np.pi) / self.T
         self.datetimes = datetimes
+        self.band = band
         
         self.doy = np.array([datetime.fromordinal(x.astype(int)).timetuple().tm_yday for x in self.datetimes])
         self.lasso_model = None

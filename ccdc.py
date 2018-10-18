@@ -244,9 +244,10 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
     try:
         model_data, next_obs = initModel(pixel_data, num_bands, init_obs, args.cross_validate, args.alpha, args.bands)
     except TypeError:
+        print("Could not initialise")
         return []
     
-    if(args.outtype == 'csv'):
+    if(args.output_mode == "normal" and args.outtype == 'csv'):
         model_output = [[x.getMinDate(), x.getMaxDate(), x.start_val, x.end_val, x.RMSE, x.coefficients, x.lasso_model.intercept_, x.alpha] for x in model_list]
         
     # Detect change
@@ -314,7 +315,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
         next_obs += 1
     
     # No change detected, end of data reached
-    
+    print("No change detected, end of data reached")
     # Write model details out to file if needed
     if(args.output_mode == "normal" and args.outtype == 'csv'):
         with open(change_file, 'a') as output_file:

@@ -314,6 +314,14 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
         next_obs += 1
     
     # No change detected, end of data reached
+    
+    # Write model details out to file if needed
+    if(args.output_mode == "normal" and args.outtype == 'csv'):
+        with open(change_file, 'a') as output_file:
+            writer = csv.writer(output_file)
+                        
+            for model_ix in range(model_output):
+                writer.writerow(model_output[model_ix])
     return []
     
 def runCCDC(input_data, num_bands, output_file, args):

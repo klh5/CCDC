@@ -55,7 +55,7 @@ class MakeCCDCModel(object):
                                 
         self.predicted = self.lasso_model.predict(x)
         
-        self.coefficients = self.lasso_model.coef_
+        self.coefficients = ["{:0.4f}".format(c) for c in self.lasso_model.coef_]
         
         self.residuals = band_data - self.predicted
     

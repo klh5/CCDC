@@ -17,6 +17,8 @@ from datetime import datetime
 from scipy.interpolate import interp1d
 from multiprocessing import Pool
 
+np.set_printoptions(precision=4)
+
 plt_list = []        # List of plots, one for each band
 
 def addChangeMarker(num_bands, change_date, obs_data):
@@ -283,7 +285,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
                 setupModels(model_data, num_bands, init_obs, args.cross_validate, args.alpha, args.bands)
                 
                 if(args.output_mode == "normal" and args.outtype == 'csv'):
-                        model_output = [[x.band, x.getMinDate(), x.getMaxDate(), x.start_val, x.end_val, x.RMSE, x.coefficients, x.lasso_model.intercept_, x.alpha] for x in model_list]
+                        model_output = [[x.band, x.getMinDate(), x.getMaxDate(), x.start_val, x.end_val, x.coefficients, x.RMSE, x.lasso_model.intercept_, x.alpha] for x in model_list]
                 
                 num_new_obs = 0
                 

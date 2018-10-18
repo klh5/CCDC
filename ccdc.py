@@ -244,12 +244,11 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
     try:
         model_data, next_obs = initModel(pixel_data, num_bands, init_obs, args.cross_validate, args.alpha, args.bands)
     except TypeError:
-        print("Could not initialise")
         return []
     
     if(args.output_mode == "normal" and args.outtype == 'csv'):
-        model_output = [[x.getMinDate(), x.getMaxDate(), x.start_val, x.end_val, x.RMSE, x.coefficients, x.lasso_model.intercept_, x.alpha] for x in model_list]
-        
+        model_output = [[x.band, x.getMinDate(), x.getMaxDate(), x.start_val, x.end_val, x.coefficients, x.RMSE, x.lasso_model.intercept_, x.alpha] for x in model_list]
+  
     # Detect change
     change_flag = 0
     change_time = None
@@ -282,6 +281,10 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
             
             if(num_new_obs == args.re_init):
                 setupModels(model_data, num_bands, init_obs, args.cross_validate, args.alpha, args.bands)
+                
+                if(args.output_mode == "normal" and args.outtype == 'csv'):
+                        model_output = [[x.band, x.getMinDate(), x.getMaxDate(), x.start_val, x.end_val, x.RMSE, x.coefficients, x.lasso_model.intercept_, x.alpha] for x in model_list]
+                
                 num_new_obs = 0
                 
             change_flag = 0 # Reset change flag because we have an inlier
@@ -305,7 +308,8 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
                     with open(change_file, 'a') as output_file:
                         writer = csv.writer(output_file)
                         
-                        for model_ix in range(model_output):
+                        for model_ix in range(len(model_output)):
+                            model_output[model_ix].append(change_time)
                             model_output[model_ix].append(change_mags[model_ix])
                             writer.writerow(model_output[model_ix])
                                                
@@ -315,13 +319,13 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
         next_obs += 1
     
     # No change detected, end of data reached
-    print("No change detected, end of data reached")
+
     # Write model details out to file if needed
     if(args.output_mode == "normal" and args.outtype == 'csv'):
         with open(change_file, 'a') as output_file:
             writer = csv.writer(output_file)
                         
-            for model_ix in range(model_output):
+            for model_ix in range(len(model_output)):
                 writer.writerow(model_output[model_ix])
     return []
     
@@ -355,7 +359,7 @@ def runCCDC(input_data, num_bands, output_file, args):
             else:
                   output_file = output_file + ".csv"
                   
-                  headers = ["band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "start_change", "end_change", "magnitude"]
+                  headers = ["band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
                   
                   with open(output_file, 'w') as output:
                      writer = csv.writer(output)

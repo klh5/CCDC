@@ -909,11 +909,13 @@ def runOnCSV(num_bands, args):
     
     ts_data = pd.read_csv(args.csv_file)
     
+    ts_data = ts_data.dropna(axis=0, how='any')
+    
     uq_name = "{}_change".format(args.csv_file.split('/')[-1].strip('.csv')) 
 
     output_file = os.path.join(args.outdir, uq_name)
 
-    ts_data.datetime = dateToNumber(ts_data.datetime)
+    ts_data.datetime = [dateToNumber(x) for x in ts_data.datetime]
     
     runCCDC(ts_data.values, num_bands, output_file, args)       
       

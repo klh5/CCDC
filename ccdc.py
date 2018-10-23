@@ -72,17 +72,17 @@ def getNumYears(date_list):
 
     return num_years
 
-def dateToNumber(date):
+def datesToNumbers(dates):
     
-    date_as_ordinal = pd.Timestamp(date).toordinal()
+    dates_as_ordinal = np.array([pd.Timestamp(x).toordinal() for x in dates])
     
-    return date_as_ordinal
+    return dates_as_ordinal
 
 def transformToArray(dataset_to_transform):
 
     """Transforms xarray Dataset object into a Numpy array"""
     
-    ds_to_array = dateToNumber(dataset_to_transform.time.data).reshape(-1, 1)
+    ds_to_array = datesToNumbers(dataset_to_transform.time.data).reshape(-1, 1)
     
     for var in dataset_to_transform.data_vars:
         ds_to_array = np.hstack((ds_to_array, dataset_to_transform[var].values.reshape(-1, 1)))
@@ -900,7 +900,7 @@ def runOnCSV(num_bands, args):
 
     output_file = os.path.join(args.outdir, uq_name)
 
-    ts_data.datetime = [dateToNumber(x) for x in ts_data.datetime]
+    ts_data.datetime = datesToNumbers(ts_data.datetime)
     
     runCCDC(ts_data.values, num_bands, output_file, args)       
       

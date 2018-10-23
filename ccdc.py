@@ -82,30 +82,15 @@ def transformToArray(dataset_to_transform):
 
     """Transforms xarray Dataset object into a Numpy array"""
     
-    num_cols = len(dataset_to_transform.data_vars) + 1 # Add 1 for datetime column
-    num_rows = len(dataset_to_transform.time)
+    ds_to_array = dateToNumber(dataset_to_transform.time.data).reshape(-1, 1)
     
-    as_array = np.empty((num_rows, num_cols)) # Initialise empty array of the right size
-    
-    for i in range(num_rows): # Need to iterate over each "row" (time point) in the xarray data set
+    for var in dataset_to_transform.data_vars:
+        ds_to_array = np.hstack((ds_to_array, dataset_to_transform[var].values.reshape(-1, 1)))
         
-        row = []
-     
-        data = dataset_to_transform.isel(time=i) # Select this time point from xarray data set
-        
-        row.append(dateToNumber(data.time.values)) # Get ordinal date and add to row
-        
-        # Add values for all bands to row
-        for var in data.data_vars:
-            row.append(data[var].values)
-        
-        # Set appropriate row in numpy array
-        as_array[i] = row
-
     # Remove NaNs and sort by datetime    
-    tidy_array = tidyData(as_array)
+    ds_to_array = tidyData(ds_to_array)
 
-    return tidy_array
+    return ds_to_array
 
 def setupPredictionFile(output_file, num_bands, band_names):
     

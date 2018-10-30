@@ -56,7 +56,7 @@ def setupModels(all_band_data, num_bands, init_obs, cv, alpha, bands):
 
 def getNumYears(date_list):
 
-    """Get number of years (from Python/Rata Die date)"""
+    """Get number of years spanned by the dataset (from Python/Rata Die date)"""
     
     try:
         last_date = datetime.fromordinal(np.amax(date_list).astype(int)).strftime('%Y')
@@ -71,6 +71,25 @@ def getNumYears(date_list):
         return 0
 
     return num_years
+
+def checkTimePeriod(date_list):
+    
+    """Check that the dataset spans at least 1 year"""
+    
+    try:
+        last_date = datetime.fromordinal(np.amax(date_list).astype(int))
+        first_date = datetime.fromordinal(np.amin(date_list).astype(int))
+            
+        days = (last_date-first_date).days
+        
+        if(days >= 365):
+            return True
+                
+    except ValueError as err:
+        print("ValueError when trying to check length of remaining data: {}".format(err))
+        print(date_list)
+        
+    return False
 
 def datesToNumbers(dates):
     
@@ -336,11 +355,8 @@ def runCCDC(input_data, num_bands, output_file, args):
     """The main function which runs the CCDC algorithm. Loops until there are not enough observations
         left after a breakpoint to attempt to initialize a new model."""
 
-    # Get the number of years covered by the dataset
-    num_years = getNumYears(input_data[:,0])
-  
     # The algorithm needs at least 1 year of data (after any screening)
-    if(num_years > 0 and len(input_data) >= 6):
+    if(checkTimePeriod(input_data[:,0]) > 0 and len(input_data) >= 6):
         
         if(args.output_mode == "normal"):
                               
@@ -378,7 +394,7 @@ def runCCDC(input_data, num_bands, output_file, args):
                  
         # We need at least 6 clear observations
         while(len(input_data) >= 6):
-            if(getNumYears(input_data[:,0]) > 0):
+            if(checkTimePeriod(input_data[:,0])):
 
                 # Get total number of clear observations in the dataset
                 num_clear_obs = len(input_data)

@@ -97,8 +97,8 @@ class MakeCCDCModel(object):
         # Sort differenced values and return index
         sorted_ix = sorted(range(len(differenced)), key=lambda k: differenced[k])
 
-        # Get 24 closest values by index
-        closest = sorted_ix[:24]
+        # Get closest values by index
+        closest = sorted_ix[:self.init_obs]
         
         # Subset residuals by indices of closest DOY values
         closest_residuals = self.residuals[closest]
@@ -110,12 +110,8 @@ class MakeCCDCModel(object):
     
     def getRMSE(self, curr_date):
         
-        if(len(self.datetimes) >= 24):
-            return self.getAdjustedRMSE(curr_date)
-        
-        else:
-            return self.RMSE
-           
+        return self.getAdjustedRMSE(curr_date)
+                  
     def getMinDate(self):
         
         return np.min(self.datetimes)

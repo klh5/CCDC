@@ -72,25 +72,6 @@ def getNumYears(date_list):
 
     return num_years
 
-def checkTimePeriod(date_list):
-    
-    """Check that the dataset spans at least 1 year"""
-    
-    try:
-        last_date = datetime.fromordinal(np.amax(date_list).astype(int))
-        first_date = datetime.fromordinal(np.amin(date_list).astype(int))
-            
-        days = (last_date-first_date).days
-        
-        if(days >= 365):
-            return True
-                
-    except ValueError as err:
-        print("ValueError when trying to check length of remaining data: {}".format(err))
-        print(date_list)
-        
-    return False
-
 def datesToNumbers(dates):
     
     dates_as_ordinal = np.array([pd.Timestamp(x).toordinal() for x in dates])
@@ -355,8 +336,8 @@ def runCCDC(input_data, num_bands, output_file, args):
     """The main function which runs the CCDC algorithm. Loops until there are not enough observations
         left after a breakpoint to attempt to initialize a new model."""
 
-    # The algorithm needs at least 1 year of data (after any screening)
-    if(checkTimePeriod(input_data[:,0]) > 0 and len(input_data) >= 6):
+    # The algorithm needs at least 6 observations to start
+    if(len(input_data) >= 6):
         
         if(args.output_mode == "normal"):
                               
@@ -391,48 +372,46 @@ def runCCDC(input_data, num_bands, output_file, args):
             # Set up output file
             output_file = output_file + ".csv"
             setupPredictionFile(output_file, num_bands, args.bands)                 
-                 
-        # We need at least 6 clear observations
-        while(len(input_data) >= 6):
-            if(checkTimePeriod(input_data[:,0])):
-
-                # Get total number of clear observations in the dataset
-                num_clear_obs = len(input_data)
         
-                if(num_clear_obs >=6 and num_clear_obs < 12):
-                    # Use simple model with initialization period of 6 obs
-                    input_data = findChange(input_data, output_file, num_bands, 6, args)
-                
-                elif(num_clear_obs >= 12 and num_clear_obs < 18):
-                    # Use simple model with initialization period of 12 obs
-                    input_data = findChange(input_data, output_file, num_bands, 12, args)
+        # Get total number of clear observations for this pixel
+        num_clear_obs = len(input_data)
+        
+        # Decide window size - this is based on a minimum of 6 obs, plus 6 to detect change
+        # A larger window size means a more complex model will be fitted
+        
+        if(num_clear_obs >=12 and num_clear_obs < 18):
+            # Use simple model with initialization period of 6 obs
+            window = 6
+        
+        elif(num_clear_obs >= 18 and num_clear_obs < 24):
+            # Use simple model with initialization period of 12 obs
+            window = 12
 
-                elif(num_clear_obs >= 18 and num_clear_obs < 24):
-                    # Use advanced model with initialization period of 18 obs
-                    input_data = findChange(input_data, output_file, num_bands, 18, args)
+        elif(num_clear_obs >= 24 and num_clear_obs < 30):
+            # Use advanced model with initialization period of 18 obs
+           window = 18
+        
+        elif(num_clear_obs >= 30):
+            # Use full model with initialisation period of 24 obs
+            window = 24
+        
+        # We need at least 12 clear observations (6 + 6 to detect change)
+        while(len(input_data) >= 12):
+
+            input_data = findChange(input_data, output_file, num_bands, window, args)
+                    
+            if(args.output_mode == "predictive"):
                 
-                elif(num_clear_obs >= 24):
-                    # Use full model with initialisation period of 24 obs
-                    input_data = findChange(input_data, output_file, num_bands, 24, args)
-                    
-                if(args.output_mode == "predictive"):
-                    
-                    # input_data always contains the next set of values, i.e. after a break. If the first observation in this
-                    # set is greater than the date to predict, the current set of models are the ones to use.
-                    if(len(input_data) > 0): # If there is still data left to process                        
-                        if(input_data[0][0] > end_date):
-                            writeOutPrediction(output_file, end_date)
-                            return
-                            
-                    else: # End of data has been reached without finding the date to predict
+                # input_data always contains the next set of values, i.e. after a break. If the first observation in this
+                # set is greater than the date to predict, the current set of models are the ones to use.
+                if(len(input_data) > 0): # If there is still data left to process                        
+                    if(input_data[0][0] > end_date):
                         writeOutPrediction(output_file, end_date)
+                        return
+                        
+                else: # End of data has been reached without finding the date to predict
+                    writeOutPrediction(output_file, end_date)
                 
-            else:
-                #print("Less than 1 year of observations remaining.")
-                break                               
-
-        #print("Ran out of observations.")
-
         if(args.output_mode == "normal" and args.outtype == 'plot'):
 
             for i in range(num_bands):

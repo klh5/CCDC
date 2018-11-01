@@ -395,8 +395,8 @@ def runCCDC(input_data, num_bands, output_file, args):
             # Use full model with initialisation period of 24 obs
             window = 24
         
-        # We need at least 12 clear observations (6 + 6 to detect change)
-        while(len(input_data) >= 12):
+        # Remaining data length needs to be smaller than window size
+        while(len(input_data) >= window):
 
             input_data = findChange(input_data, output_file, num_bands, window, args)
                     

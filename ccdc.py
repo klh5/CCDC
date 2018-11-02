@@ -336,8 +336,8 @@ def runCCDC(input_data, num_bands, output_file, args):
     """The main function which runs the CCDC algorithm. Loops until there are not enough observations
         left after a breakpoint to attempt to initialize a new model."""
 
-    # The algorithm needs at least 6 observations to start
-    if(len(input_data) >= 6):
+    # The algorithm needs at least 12 observations to start
+    if(len(input_data) >= 12):
         
         if(args.output_mode == "normal"):
                               

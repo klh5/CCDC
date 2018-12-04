@@ -345,6 +345,8 @@ def runCCDC(input_data, num_bands, x_val, y_val, args):
     # The algorithm needs at least 12 observations to start
     if(len(input_data) >= 12):
         
+        output_file = None
+        
         if(args.output_mode == "normal"):
                               
             if(args.outtype == 'plot'):
@@ -361,16 +363,6 @@ def runCCDC(input_data, num_bands, x_val, y_val, args):
                     plt_list[i].xaxis.set_major_formatter(myFmt)
                     plt_list[i].set_ylabel(args.bands[i], fontdict={"size": 18})
     
-            else:
-                  output_file = os.path.join(args.outdir, "{}.csv".format(args.output_file))
-                  
-                  # Write headers to file
-                  headers = ["x", "y", "band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
-                  
-                  with open(output_file, 'w') as output:
-                     writer = csv.writer(output)
-                     writer.writerow(headers)
-           
         if(args.output_mode == "predictive"):
             
             # Convert stopping date to ordinal so that it can easily be predicted
@@ -436,15 +428,7 @@ def runCCDC(input_data, num_bands, x_val, y_val, args):
                 plt.tight_layout()
                 plt.savefig(output_file)
                 plt.close(fig)
-                
-            elif(args.outtype == 'csv'):
-                
-                global rows
-                
-                with open(output_file, 'a') as results_file:
-                    writer = csv.writer(results_file)
-                    writer.writerows(rows)
-                                                                                   
+                                                                                               
 def runOnSubset(num_bands, args):
 
     """If the user chooses to run the algorithm on a random subsample of the data, this function is called.
@@ -699,6 +683,8 @@ def runByTile(key, num_bands, args):
        A key represent one cell/area. Each cell has a tile for each time point. The x and y values define the extent of
        the tile that should be loaded and processed."""
        
+    global rows
+       
     # Calculate the right number of columns to be returned from the data cube
     input_num_cols = num_bands + 1
     
@@ -774,10 +760,22 @@ def runByTile(key, num_bands, args):
     if(tmask_ds):
         del tmask_ds
         del tmask_data
-                                                       
+            
+    # Run processes                                           
     with Pool(processes=args.num_procs) as pool:
         pool.starmap(runCCDC, ccdc_args)
-              
+        
+    # Generate output file name
+    output_file = os.path.join(args.outdir, "{}.csv".format(args.output_file))
+                  
+    # Write headers to file
+    headers = ["x", "y", "band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
+      
+    with open(output_file, 'w') as output:
+        writer = csv.writer(output)
+        writer.writerow(headers)
+        writer.writerows(rows)
+           
 def loadAll(products, key, bands):
     
     ds = []

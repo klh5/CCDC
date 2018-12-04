@@ -16,8 +16,13 @@ from removeOutliers import RLMRemoveOutliers
 from datetime import datetime
 from scipy.interpolate import interp1d
 from multiprocessing import Pool
+from multiprocessing import Manager
 
 np.set_printoptions(precision=4)
+
+# Set up list that can be accessed by multiple processes at once
+manager = Manager()
+rows = manager.list()
 
 plt_list = []        # List of plots, one for each band
 
@@ -238,18 +243,23 @@ def initModel(pixel_data, num_bands, init_obs, cv, alpha, bands):
 
     return curr_obs_list, init_end
 
-def findChange(pixel_data, change_file, num_bands, init_obs, args):
+def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args):
     
     """Continues to add data points to the model until either a new breakpoint is detected, or there
         are not enough observations remaining."""
-
+        
+        
+        # this is where all of the csv output gets written
+        # needs to now go to the shared list
+    global rows
+    
     try:
         model_data, next_obs = initModel(pixel_data, num_bands, init_obs, args.cross_validate, args.alpha, args.bands)
     except TypeError:
         return []
     
     if(args.output_mode == "normal" and args.outtype == 'csv'):
-        model_output = [[x.band, x.getMinDate(), x.getMaxDate(), x.start_val, x.end_val, ["{:0.5f}".format(c) for c in x.coefficients], x.RMSE, x.lasso_model.intercept_, x.alpha] for x in model_list]
+        model_output = [[x, y, m.band, m.getMinDate(), m.getMaxDate(), m.start_val, m.end_val, ["{:0.5f}".format(c) for c in m.coefficients], m.RMSE, m.lasso_model.intercept_, m.alpha] for m in model_list]
 
     # Detect change
     change_flag = 0
@@ -285,7 +295,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
                 setupModels(model_data, num_bands, init_obs, args.cross_validate, args.alpha, args.bands)
                 
                 if(args.output_mode == "normal" and args.outtype == 'csv'):
-                        model_output = [[x.band, x.getMinDate(), x.getMaxDate(), x.start_val, x.end_val, ["{:0.5f}".format(c) for c in x.coefficients], x.RMSE, x.lasso_model.intercept_, x.alpha] for x in model_list]
+                        model_output = [[x, y, m.band, m.getMinDate(), m.getMaxDate(), m.start_val, m.end_val, ["{:0.5f}".format(c) for c in m.coefficients], m.RMSE, m.lasso_model.intercept_, m.alpha] for m in model_list]
                 
                 num_new_obs = 0
                 
@@ -306,14 +316,11 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
                 if(args.outtype == 'plot'):
                     addChangeMarker(num_bands, change_time, pixel_data)
     
-                else:
-                    with open(change_file, 'a') as output_file:
-                        writer = csv.writer(output_file)
-                        
-                        for model_ix in range(len(model_output)):
-                            model_output[model_ix].append(change_time)
-                            model_output[model_ix].append(change_mags[model_ix])
-                            writer.writerow(model_output[model_ix])
+                else:  
+                    for model_ix in range(len(model_output)):
+                        model_output[model_ix].append(change_time)
+                        model_output[model_ix].append(change_mags[model_ix])
+                        rows.append(model_output[model_ix])
                                                
             return pixel_data[next_obs-5:,] # Return index of date when change was first flagged
         
@@ -324,14 +331,13 @@ def findChange(pixel_data, change_file, num_bands, init_obs, args):
 
     # Write model details out to file if needed
     if(args.output_mode == "normal" and args.outtype == 'csv'):
-        with open(change_file, 'a') as output_file:
-            writer = csv.writer(output_file)
                         
-            for model_ix in range(len(model_output)):
-                writer.writerow(model_output[model_ix])
+        for model_ix in range(len(model_output)):
+            rows.append(model_output[model_ix])
+            
     return []
     
-def runCCDC(input_data, num_bands, output_file, args):
+def runCCDC(input_data, num_bands, x_val, y_val, args):
 
     """The main function which runs the CCDC algorithm. Loops until there are not enough observations
         left after a breakpoint to attempt to initialize a new model."""
@@ -342,8 +348,8 @@ def runCCDC(input_data, num_bands, output_file, args):
         if(args.output_mode == "normal"):
                               
             if(args.outtype == 'plot'):
-                
-                output_file = output_file + ".png"
+
+                output_file = os.path.join(args.outdir, "{}_{}.png".format(x_val, y_val))
                   
                 fig = plt.figure(figsize=(20, 10))
                 
@@ -356,9 +362,10 @@ def runCCDC(input_data, num_bands, output_file, args):
                     plt_list[i].set_ylabel(args.bands[i], fontdict={"size": 18})
     
             else:
-                  output_file = output_file + ".csv"
+                  output_file = os.path.join(args.outdir, "{}.csv".format(args.output_file))
                   
-                  headers = ["band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
+                  # Write headers to file
+                  headers = ["x", "y", "band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
                   
                   with open(output_file, 'w') as output:
                      writer = csv.writer(output)
@@ -370,7 +377,7 @@ def runCCDC(input_data, num_bands, output_file, args):
             end_date = datetime.strptime(args.date_to_predict, "%Y-%m-%d").toordinal()
 
             # Set up output file
-            output_file = output_file + ".csv"
+            output_file = os.path.join(args.outdir, "{}_{}.csv".format(x_val, y_val))
             setupPredictionFile(output_file, num_bands, args.bands)                 
         
         # Get total number of clear observations for this pixel
@@ -398,7 +405,7 @@ def runCCDC(input_data, num_bands, output_file, args):
         # Remaining data length needs to be smaller than window size
         while(len(input_data) >= window):
 
-            input_data = findChange(input_data, output_file, num_bands, window, args)
+            input_data = findChange(input_data, output_file, num_bands, window, x_val, y_val, args)
                     
             if(args.output_mode == "predictive"):
                 
@@ -412,22 +419,31 @@ def runCCDC(input_data, num_bands, output_file, args):
                 else: # End of data has been reached without finding the date to predict
                     writeOutPrediction(output_file, end_date)
                 
-        if(args.output_mode == "normal" and args.outtype == 'plot'):
+        if(args.output_mode == "normal"):
+            if(args.outtype == 'plot'):
 
-            for i in range(num_bands):
-                interp = interp1d(model_list[i].datetimes, model_list[i].predicted, kind='cubic')
-                xnew = np.linspace(model_list[i].getMinDate(), model_list[i].getMaxDate(), 500)
-                plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=2) # Plot fitted model              
-
-            # Plot empty datasets so start/end of change is included in legend
-            plt_list[0].plot([], [], 'r', label='Change')
-            plt_list[0].plot([], [], 'm', label='Fitted model')
-            
-            plt_list[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=4, fancybox=True, shadow=True)
-            plt.xlabel("Date", fontdict={"size": 18})
-            plt.tight_layout()
-            plt.savefig(output_file)
-            plt.close(fig)
+                for i in range(num_bands):
+                    interp = interp1d(model_list[i].datetimes, model_list[i].predicted, kind='cubic')
+                    xnew = np.linspace(model_list[i].getMinDate(), model_list[i].getMaxDate(), 500)
+                    plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=2) # Plot fitted model              
+    
+                # Plot empty datasets so start/end of change is included in legend
+                plt_list[0].plot([], [], 'r', label='Change')
+                plt_list[0].plot([], [], 'm', label='Fitted model')
+                
+                plt_list[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=4, fancybox=True, shadow=True)
+                plt.xlabel("Date", fontdict={"size": 18})
+                plt.tight_layout()
+                plt.savefig(output_file)
+                plt.close(fig)
+                
+            elif(args.outtype == 'csv'):
+                
+                global rows
+                
+                with open(output_file, 'a') as results_file:
+                    writer = csv.writer(results_file)
+                    writer.writerows(rows)
                                                                                    
 def runOnSubset(num_bands, args):
 
@@ -706,22 +722,24 @@ def runByTile(key, num_bands, args):
         # Tidy up input data
         input_data = xr.concat(input_ds, dim='time')
         input_data = mask_invalid_data(input_data)
+        
+        del input_ds
                        
         if(cloud_ds):            
-            cloud_masks = xr.concat(cloud_ds, dim='time')
+            cloud_masks = xr.concat(cloud_ds, dim='time')           
                           
         # Do the same for TOA data if present - tmask_ds will be empty if no TOA data sets were specified
         if(tmask_ds):               
             tmask_data = xr.concat(tmask_ds, dim='time')
-            tmask_data = mask_invalid_data(tmask_data)
+            tmask_data = mask_invalid_data(tmask_data)           
             
         for i in range(len(input_data.x)):
             for j in range(len(input_data.y)):
                 
                 input_ts = input_data.isel(x=i, y=j)
                 
-                x_val = str(float(input_ts.x))
-                y_val = str(float(input_ts.y))
+                x_val = float(input_ts.x)
+                y_val = float(input_ts.y)
                 
                 input_ts = transformToArray(input_ts) # Transform to Numpy array, sort and remove NaNs
 
@@ -742,13 +760,21 @@ def runByTile(key, num_bands, args):
 
                         tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
                         input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data
-                    
-                    # Create file name
-                    output_file = os.path.join(args.outdir, "{}_{}".format(x_val, y_val))
-                                     
-                    argslist = (input_ts, num_bands, output_file, args)
+                                 
+                    argslist = (input_ts, num_bands, x_val, y_val, args)
                     ccdc_args.append(argslist)
-                                                              
+    
+    # Do some tidying up
+    del input_data   
+
+    if(cloud_ds):
+        del cloud_ds
+        del cloud_masks
+
+    if(tmask_ds):
+        del tmask_ds
+        del tmask_data
+                                                       
     with Pool(processes=args.num_procs) as pool:
         pool.starmap(runCCDC, ccdc_args)
               
@@ -987,6 +1013,7 @@ if __name__ == "__main__":
     parser.add_argument('-csv', '--csv_file', help="The CSV file to use, if process mode is CSV.")
     parser.add_argument('-a', '--alpha', type=float, default=1.0, help="Alpha parameter for Lasso regression. Defaults to 1.0.")
     parser.add_argument('-cv', '--cross_validate', default=False, action='store_true', help="Whether to use cross validation to find alpha parameter. If set the --alpha argument will be ignored.")
+    parser.add_argument('-of', '--output_file', help="The output file name to use if using CSV output, e.g. tile number.")
     
     args = parser.parse_args()
       

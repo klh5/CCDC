@@ -248,9 +248,8 @@ def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args):
     """Continues to add data points to the model until either a new breakpoint is detected, or there
         are not enough observations remaining."""
         
-        
-        # this is where all of the csv output gets written
-        # needs to now go to the shared list
+    # this is where all of the csv output gets written
+    # needs to now go to the shared list
     global rows
     
     try:
@@ -434,6 +433,8 @@ def runOnSubset(num_bands, args):
     """If the user chooses to run the algorithm on a random subsample of the data, this function is called.
        It divides the number of subsamples to be taken by the number of cells/keys for a product or products.
        It then runs CCDC on the appropriate number of pixels per cell to get an even spread of samples."""
+       
+    global rows
         
     # Calculate the right number of columns to be returned from the data cube
     input_num_cols = num_bands + 1    
@@ -469,6 +470,7 @@ def runOnSubset(num_bands, args):
                 min_y = y
                 max_y = y+new_tile_size
                 
+                ccdc_args = []
                 input_ds = []
                 tmask_ds = []
                 cloud_ds = []
@@ -498,9 +500,7 @@ def runOnSubset(num_bands, args):
                         
                         tmask_data = xr.concat(tmask_ds, dim='time')
                         tmask_data = mask_invalid_data(tmask_data)
-                               
-                    ccdc_args = []
-                                   
+                                                                  
                     # We want to process a random subset of pixels
                     for i in range(samples_per_cell):
                                            
@@ -509,8 +509,8 @@ def runOnSubset(num_bands, args):
                                                                 
                         input_ts = input_data.isel(x=random_x, y=random_y) # Get just one pixel
                         
-                        x_val = str(float(input_ts.x))
-                        y_val = str(float(input_ts.y))
+                        x_val = float(input_ts.x)
+                        y_val = float(input_ts.y)
         
                         input_ts = transformToArray(input_ts) # Transform the time series into a numpy array                    
                                                
@@ -531,17 +531,40 @@ def runOnSubset(num_bands, args):
                                 tmask_ts = transformToArray(tmask_ts)         
                                 tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
                                 input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data    
-                                                            
-                            # Create file name
-                            output_file = os.path.join(args.outdir, "{}_{}".format(x_val, y_val))
-                                
-                            argslist = (input_ts, num_bands, output_file, args)
+                                                                 
+                            argslist = (input_ts, num_bands, x_val, y_val, args)
                             ccdc_args.append(argslist)
                 
-                # Use multiprocessing to process all samples from this tile            
-                with Pool(processes=args.num_procs) as pool:    
-                    pool.starmap(runCCDC, ccdc_args)            
-                                          
+        # Use multiprocessing to process all samples from this mini-tile            
+        # Do some tidying up
+        del input_data   
+    
+        if(cloud_ds):
+            del cloud_ds
+            del cloud_masks
+    
+        if(tmask_ds):
+            del tmask_ds
+            del tmask_data
+                
+        # Run processes                                           
+        with Pool(processes=args.num_procs) as pool:
+            pool.starmap(runCCDC, ccdc_args)
+
+        # Generate output file name
+        output_file = os.path.join(args.outdir, "{}_{}_{}_{}_{}_{}.csv".format(args.output_file, key, min_y, max_y, min_x, max_x))            
+        
+         # Write headers to file
+        headers = ["x", "y", "band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
+          
+        with open(output_file, 'w') as output:
+            writer = csv.writer(output)
+            writer.writerow(headers)
+            writer.writerows(rows)
+            
+        # Reset shared list
+        rows = []
+        
 def loadArea(products, bands, lowerlat, upperlat, lowerlon, upperlon):
     
     ds = []
@@ -564,16 +587,16 @@ def runOnArea(num_bands, args):
     """If the user chooses to run the algorithm on the whole of the specified area, this function is called.
     This function will load the whole area specified by the user, and run the algorithm on each pixel."""
     
+    # Refers to Manager list object
+    global rows
+    
     # Calculate the right number of columns to be returned from the data cube
     input_num_cols = num_bands + 1    
     
+    ccdc_args = []
     input_ds = []
     tmask_ds = []
     cloud_ds = []
-    
-    num_processes = args.num_procs
-    
-    processes = [] 
     
     input_ds = loadArea(args.input_products, args.bands, args.lowerlat, args.upperlat, args.lowerlon, args.upperlon)
 
@@ -624,34 +647,35 @@ def runOnArea(num_bands, args):
                         tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
                         input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data
 
-                    # Create file name
-                    output_file = os.path.join(args.outdir, "{}_{}".format(x_val, y_val))
+                    argslist = (input_ts, num_bands, x_val, y_val, args)
+                    ccdc_args.append(argslist)
                     
-                    # Block until a core becomes available
-                    while(True):
+    # Do some tidying up
+    del input_data   
 
-                        p_done = []
+    if(cloud_ds):
+        del cloud_ds
+        del cloud_masks
 
-                        for index, p in enumerate(processes):
-                                
-                            if(not p.is_alive()):
-                                p_done.append(index)
-
-                        if(p_done):
-                            for index in sorted(p_done, reverse=True): # Need to delete in reverse order to preserve indexes
-                                del(processes[index])
-
-                        if(len(processes) < num_processes):
-                            break
-                                    
-                    process = multiprocessing.Process(target=runCCDC, args=(input_ts, num_bands, output_file, args))
-                    processes.append(process)
-                    process.start()
-
-    # Keep running until all processes have finished
-    for p in processes:
-        p.join()
+    if(tmask_ds):
+        del tmask_ds
+        del tmask_data
+            
+    # Run processes                                           
+    with Pool(processes=args.num_procs) as pool:
+        pool.starmap(runCCDC, ccdc_args)
         
+    # Generate output file name
+    output_file = os.path.join(args.outdir, "{}.csv".format(args.output_file))
+                  
+    # Write headers to file
+    headers = ["x", "y", "band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
+      
+    with open(output_file, 'w') as output:
+        writer = csv.writer(output)
+        writer.writerow(headers)
+        writer.writerows(rows)
+           
 def loadByTile(products, key, min_y, max_y, min_x, max_x, bands):
     
     ds = []
@@ -803,12 +827,11 @@ def loadAll(products, key, bands):
 def runAll(num_bands, args):
 
     """Run on all tiles in the specified datasets/area. Keys are based on the last dataset listed."""
+    
+    global rows
 
     # Calculate the right number of columns to be returned from the data cube
     input_num_cols = num_bands + 1    
-    
-    num_processes = args.num_procs
-    processes = []
 
     dc = datacube.Datacube()
 
@@ -820,8 +843,10 @@ def runAll(num_bands, args):
 
     dc.close()
     
+    # Run on each key/tile in turn
     for key in keys:
 
+        ccdc_args = []
         input_ds = []
         tmask_ds = []
         cloud_ds = []
@@ -858,8 +883,8 @@ def runAll(num_bands, args):
 
                     input_ts = input_data.isel(x=i, y=j) # Get just one pixel
                     
-                    x_val = str(float(input_ts.x))
-                    y_val = str(float(input_ts.y))
+                    x_val = float(input_ts.x)
+                    y_val = float(input_ts.y)
 
                     input_ts = transformToArray(input_ts) # Transform the time series into a numpy array                    
                                               
@@ -879,37 +904,43 @@ def runAll(num_bands, args):
                             
                             tmask_ts = transformToArray(tmask_ts)         
                             tmask_ts = tmask_ts[np.isin(tmask_ts[:,0], input_ts[:,0])] # Remove any rows which aren't in the SREF data
-                            input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data    
-                                                        
-                        # Create file name
-                        output_file = os.path.join(args.outdir, "{}_{}".format(x_val, y_val))
+                            input_ts = doTmask(input_ts, tmask_ts) # Use Tmask to further screen the input data  
+                            
+                        argslist = (input_ts, num_bands, x_val, y_val, args)
+                        ccdc_args.append(argslist)
                         
-                        # Block until a core becomes available
-                        while(True):
-    
-                            p_done = []
-    
-                            for index, p in enumerate(processes):
-                                    
-                                if(not p.is_alive()):
-                                    p_done.append(index)
-    
-                            if(p_done):
-                                for index in sorted(p_done, reverse=True): # Need to delete in reverse order to preserve indexes
-                                    del(processes[index])
-    
-                            if(len(processes) < num_processes):
-                                break
-                                        
-                        process = multiprocessing.Process(target=runCCDC, args=(input_ts, num_bands, output_file, args))
-                        processes.append(process)
-                        process.start()
-
-    # Keep running until all processes have finished
-    for p in processes:
-        p.join()
+            # Do some tidying up
+            del input_data   
         
+            if(cloud_ds):
+                del cloud_ds
+                del cloud_masks
+        
+            if(tmask_ds):
+                del tmask_ds
+                del tmask_data
+                    
+            # Run processes for this key                                        
+            with Pool(processes=args.num_procs) as pool:
+                pool.starmap(runCCDC, ccdc_args)
+        
+            # Generate output file name for this key
+            output_file = os.path.join(args.outdir, "{}_{}_{}.csv".format(args.output_file, key[0], key[1])) 
+
+            # Write headers to file
+            headers = ["x", "y", "band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
+      
+            with open(output_file, 'w') as output:
+                writer = csv.writer(output)
+                writer.writerow(headers)
+                writer.writerows(rows)
+
+            # Reset shared list
+            rows = []                                           
+                        
 def runOnCSV(num_bands, args):
+    
+    global rows
     
     ts_data = pd.read_csv(args.csv_file)
     
@@ -921,7 +952,18 @@ def runOnCSV(num_bands, args):
 
     ts_data.datetime = datesToNumbers(ts_data.datetime)
     
-    runCCDC(ts_data.values, num_bands, output_file, args)       
+    runCCDC(ts_data.values, num_bands, args.csv_x_coord, args.csv_y_coord, args)       
+    
+    # Generate output file name
+    output_file = os.path.join(args.outdir, "{}.csv".format(output_file))
+                  
+    # Write headers to file
+    headers = ["x", "y", "band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
+      
+    with open(output_file, 'w') as output:
+        writer = csv.writer(output)
+        writer.writerow(headers)
+        writer.writerows(rows)
       
 def main(args):
     
@@ -1008,11 +1050,11 @@ if __name__ == "__main__":
     parser.add_argument('-i', '--re_init', type=int, default=1, help="The number of new observations added to a model before the model is refitted.")
     parser.add_argument('-p', '--num_procs', type=int, default=1, help="The number of processes to use.")
     parser.add_argument('-b', '--bands', nargs='+', required=True, help="List of band names to use in the analysis.")    
-    parser.add_argument('-csv', '--csv_file', help="The CSV file to use, if process mode is CSV.")
+    parser.add_argument('-csv', '--csv_dir', help="The directory to search for CSV files, if process mode is CSV.")
     parser.add_argument('-a', '--alpha', type=float, default=1.0, help="Alpha parameter for Lasso regression. Defaults to 1.0.")
     parser.add_argument('-cv', '--cross_validate', default=False, action='store_true', help="Whether to use cross validation to find alpha parameter. If set the --alpha argument will be ignored.")
     parser.add_argument('-of', '--output_file', help="The output file name to use if using CSV output, e.g. tile number.")
-    
+
     args = parser.parse_args()
       
     main(args)

@@ -960,7 +960,7 @@ def runOnCSV(num_bands, args):
                     ts_data.datetime = datesToNumbers(ts_data.datetime)
                     
                     # Generate unique name for output file
-                    uq_name = "{}_change".format(args.csv_file.split('/')[-1].strip('.csv')) 
+                    uq_name = "{}_change.csv".format(file.split('/')[-1].strip('.csv')) 
                 
                     output_file = os.path.join(args.outdir, uq_name)
                 
@@ -974,8 +974,8 @@ def runOnCSV(num_bands, args):
                         writer.writerow(headers)
                         writer.writerows(rows)
                         
-                except:
-                    print("Could not process CSV file {}".format(file))
+                except AttributeError:
+                    print("Could not process CSV file {}. Check column names".format(file))
                     
     else:
         print("CSV directory invalid")
@@ -986,7 +986,7 @@ def main(args):
 
     os.makedirs(os.path.dirname(args.outdir), exist_ok=True)
        
-    if(not args.input_products and not args.csv_file):
+    if(not args.input_products and not args.csv_dir):
         print("Either a list of Data Cube products or a CSV file is required for input.")
         sys.exit()
        
@@ -1031,7 +1031,7 @@ def main(args):
             print("Key/pixel details were provided, but process_mode was not tile.")
             
     else: # User has not provided any spatial details
-        if(args.process_mode == "csv" and args.csv_file is not None): # They might have provided a CSV file to analyse
+        if(args.process_mode == "csv" and args.csv_dir is not None): # They might have provided a CSV file to analyse
             runOnCSV(num_bands, args)
             
         elif(args.process_mode == "subsample"): # Or want to take a subsample of the whole area

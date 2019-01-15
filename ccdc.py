@@ -5,8 +5,8 @@ import datacube
 import xarray as xr
 import argparse
 import csv
-import multiprocessing
 import os
+import fnmatch
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datacube.storage.masking import mask_invalid_data
@@ -626,8 +626,8 @@ def runOnArea(num_bands, args):
                 
                 input_ts = input_data.isel(x=i, y=j)
                 
-                x_val = str(float(input_ts.x))
-                y_val = str(float(input_ts.y))
+                x_val = float(input_ts.x)
+                y_val = float(input_ts.y)
        
                 input_ts = transformToArray(input_ts)               
     
@@ -939,31 +939,46 @@ def runAll(num_bands, args):
             rows = []                                           
                         
 def runOnCSV(num_bands, args):
-    
-    global rows
-    
-    ts_data = pd.read_csv(args.csv_file)
-    
-    ts_data = ts_data.dropna(axis=0, how='any')
-    
-    uq_name = "{}_change".format(args.csv_file.split('/')[-1].strip('.csv')) 
 
-    output_file = os.path.join(args.outdir, uq_name)
+    # Check for valid directory 
+    if(os.path.isdir(args.csv_dir)):
+        
+        # For every file in the directory
+        for file in os.listdir(args.csv_dir):
 
-    ts_data.datetime = datesToNumbers(ts_data.datetime)
-    
-    runCCDC(ts_data.values, num_bands, args.csv_x_coord, args.csv_y_coord, args)       
-    
-    # Generate output file name
-    output_file = os.path.join(args.outdir, "{}.csv".format(output_file))
-                  
-    # Write headers to file
-    headers = ["x", "y", "band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
-      
-    with open(output_file, 'w') as output:
-        writer = csv.writer(output)
-        writer.writerow(headers)
-        writer.writerows(rows)
+            if fnmatch.fnmatch(file, '*.csv'): # Check if it's a CSV file
+                
+                try:
+                    csv_file_path = os.path.join(args.csv_dir, file)
+        
+                    ts_data = pd.read_csv(csv_file_path)
+                    
+                    # Remove missing data
+                    ts_data = ts_data.dropna(axis=0, how='any')
+                    
+                    # Convert dates to ordinal
+                    ts_data.datetime = datesToNumbers(ts_data.datetime)
+                    
+                    # Generate unique name for output file
+                    uq_name = "{}_change".format(args.csv_file.split('/')[-1].strip('.csv')) 
+                
+                    output_file = os.path.join(args.outdir, uq_name)
+                
+                    runCCDC(ts_data.values, num_bands, 0, 0, args)       
+                                  
+                    # Write headers to file
+                    headers = ["x", "y", "band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
+                      
+                    with open(output_file, 'w') as output:
+                        writer = csv.writer(output)
+                        writer.writerow(headers)
+                        writer.writerows(rows)
+                        
+                except:
+                    print("Could not process CSV file {}".format(file))
+                    
+    else:
+        print("CSV directory invalid")
       
 def main(args):
     

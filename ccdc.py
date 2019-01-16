@@ -939,6 +939,8 @@ def runAll(num_bands, args):
             rows = []                                           
                         
 def runOnCSV(num_bands, args):
+    
+    global rows
 
     # Check for valid directory 
     if(os.path.isdir(args.csv_dir)):
@@ -973,6 +975,8 @@ def runOnCSV(num_bands, args):
                         writer = csv.writer(output)
                         writer.writerow(headers)
                         writer.writerows(rows)
+                        
+                    rows = []
                         
                 except AttributeError:
                     print("Could not process CSV file {}. Check column names".format(file))

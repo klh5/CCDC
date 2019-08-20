@@ -9,6 +9,7 @@ import os
 import fnmatch
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
+import matplotlib
 from datacube.storage.masking import mask_invalid_data
 from datacube.api import GridWorkflow
 from makeModel import MakeCCDCModel
@@ -19,6 +20,7 @@ from multiprocessing import Pool
 from multiprocessing import Manager
 
 np.set_printoptions(precision=4)
+matplotlib.rcParams.update({'font.size': 16})
 
 # Set up list that can be accessed by multiple processes at once
 manager = Manager()
@@ -350,7 +352,7 @@ def runCCDC(input_data, num_bands, x_val, y_val, args):
                               
             if(args.outtype == 'plot'):
 
-                output_file = os.path.join(args.outdir, "{}_{}.png".format(x_val, y_val))
+                output_file = os.path.join(args.outdir, "{}_{}.pdf".format(x_val, y_val))
                   
                 fig = plt.figure(figsize=(20, 10))
                 
@@ -949,7 +951,7 @@ def runOnCSV(num_bands, args):
         for file in os.listdir(args.csv_dir):
 
             if fnmatch.fnmatch(file, '*.csv'): # Check if it's a CSV file
-                
+
                 try:
                     csv_file_path = os.path.join(args.csv_dir, file)
         
@@ -962,9 +964,9 @@ def runOnCSV(num_bands, args):
                     ts_data.datetime = datesToNumbers(ts_data.datetime)
                     
                     # Generate unique name for output file
-                    uq_name = "{}_change.csv".format(file.split('/')[-1].strip('.csv')) 
+                    uq_name = "{}_change.csv".format(file.split('/')[-1].replace('.csv', '')) 
                 
-                    output_file = os.path.join(args.outdir, uq_name)
+                    output_file = os.path.join(args.outdir, uq_name)                    
                 
                     runCCDC(ts_data.values, num_bands, 0, 0, args)       
                                   
@@ -975,14 +977,18 @@ def runOnCSV(num_bands, args):
                         writer = csv.writer(output)
                         writer.writerow(headers)
                         writer.writerows(rows)
-                        
-                    rows = []
-                        
+     
                 except AttributeError:
                     print("Could not process CSV file {}. Check column names".format(file))
                     
+            rows = []
+                    
     else:
         print("CSV directory invalid")
+        
+def runUsingRIOS():
+    
+    print('not done yet')
       
 def main(args):
     

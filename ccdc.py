@@ -986,9 +986,53 @@ def runOnCSV(num_bands, args):
     else:
         print("CSV directory invalid")
         
-def runUsingRIOS():
+def runOnNetCDF(num_bands, args):
     
-    print('not done yet')
+    global rows
+
+    # Calculate the right number of columns to be returned from the data cube
+    input_num_cols = num_bands + 1    
+
+    input_data = xr.open_dataset(args.input_file)
+    
+    ccdc_args = []
+                
+    # We want to process each pixel seperately
+    for i in range(len(input_data.x)):
+        for j in range(len(input_data.y)):
+
+            input_ts = input_data.isel(x=i, y=j) # Get just one pixel
+            
+            x_val = float(input_ts.x)
+            y_val = float(input_ts.y)
+
+            input_ts = transformToArray(input_ts) # Transform the time series into a numpy array                    
+                                      
+            if(input_ts.shape[0] > 0 and input_ts.shape[1] == input_num_cols):
+                
+                argslist = (input_ts, num_bands, x_val, y_val, args)
+                ccdc_args.append(argslist)
+                        
+    # Do some tidying up
+    del input_data   
+  
+    # Run processes for this key                                        
+    with Pool(processes=args.num_procs) as pool:
+        pool.starmap(runCCDC, ccdc_args)
+
+    # Generate output file name for this key
+    output_file = os.path.join(args.outdir, "{}.csv".format(args.output_file)) 
+
+    # Write headers to file
+    headers = ["x", "y", "band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
+  
+    with open(output_file, 'w') as output:
+        writer = csv.writer(output)
+        writer.writerow(headers)
+        writer.writerows(rows)
+
+    # Reset shared list
+    rows = []                              
       
 def main(args):
     
@@ -996,8 +1040,8 @@ def main(args):
 
     os.makedirs(os.path.dirname(args.outdir), exist_ok=True)
        
-    if(not args.input_products and not args.csv_dir):
-        print("Either a list of Data Cube products or a CSV file is required for input.")
+    if(not args.input_products and not args.csv_dir and not args.input_file):
+        print("Either a list of Data Cube products, a directory containing CSV files, or a path to a NetCDF file is required for input.")
         sys.exit()
        
     num_bands = len(args.bands)
@@ -1044,6 +1088,9 @@ def main(args):
         if(args.process_mode == "csv" and args.csv_dir is not None): # They might have provided a CSV file to analyse
             runOnCSV(num_bands, args)
             
+        elif(args.process_mode == "nc" and args.input_file is not None): # NetCDF file provided
+            runOnNetCDF(num_bands, args)
+            
         elif(args.process_mode == "subsample"): # Or want to take a subsample of the whole area
             runOnSubset(num_bands, args)
             
@@ -1064,7 +1111,7 @@ if __name__ == "__main__":
     parser.add_argument('-t_xmax', '--tile_x_max', type=int, help="The maximum/ending x value of the area of the tile you want to process. Required if using tile mode.")
     parser.add_argument('-t_ymin', '--tile_y_min', type=int, help="The minimum/starting y value of the area of the tile you want to process. Required if using tile mode.")
     parser.add_argument('-t_ymax', '--tile_y_max', type=int, help="The maximum/ending y value of the area of the tile you want to process. Required if using tile mode.")
-    parser.add_argument('-pm', '--process_mode', choices=['area','subsample', 'tile', 'all', 'csv'], default='all', help="Whether the algorithm should be run on a specified area, a subsample of a (specified) area, a specific tile, or all available data. You can also provide a CSV file to analyse.")
+    parser.add_argument('-pm', '--process_mode', choices=['area','subsample', 'tile', 'all', 'csv', 'nc'], default='all', help="Whether the algorithm should be run on a specified area, a subsample of a (specified) area, a specific tile, or all available data. You can also provide a CSV file or NetCDF file to analyse.")
     parser.add_argument('-om', '--output_mode', choices=['normal','predictive'], default="normal", help="Whether the algorithm should generate change output (normal) or output a prediction for the area specified.")
     parser.add_argument('-pdate', '--date_to_predict', help="The date to predict for, if output_mode is predictive. Must be in format YYYY-MM-DD")  
     parser.add_argument('-num', '--num_samples', type=int, default=1000, help="Specifies the number of subsamples to take if a random subsample is being processed.")
@@ -1078,6 +1125,7 @@ if __name__ == "__main__":
     parser.add_argument('-csv', '--csv_dir', help="The directory to search for CSV files, if process mode is CSV.")
     parser.add_argument('-a', '--alpha', type=float, default=1.0, help="Alpha parameter for Lasso regression. Defaults to 1.0.")
     parser.add_argument('-cv', '--cross_validate', default=False, action='store_true', help="Whether to use cross validation to find alpha parameter. If set the --alpha argument will be ignored.")
+    parser.add_argument('-if', '--input_file', help="Path to input NetCDF file, if process mode is nc.")
     parser.add_argument('-of', '--output_file', help="The output file name to use if using CSV output, e.g. tile number.")
 
     args = parser.parse_args()

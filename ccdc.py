@@ -26,9 +26,7 @@ matplotlib.rcParams.update({'font.size': 16})
 manager = Manager()
 rows = manager.list()
 
-plt_list = []        # List of plots, one for each band
-
-def addChangeMarker(num_bands, change_date, obs_data):
+def addChangeMarker(num_bands, change_date, obs_data, axs):
 
     """ Adds vertical lines to each plot every time change is detected """
        
@@ -36,12 +34,12 @@ def addChangeMarker(num_bands, change_date, obs_data):
         y_min = np.amin(obs_data[:,i+1])
         y_max = np.amax(obs_data[:,i+1])
 
-        plt_list[i].plot([change_date, change_date], [y_min, y_max], 'r', linewidth=2)
+        axs[i, 0].plot([change_date, change_date], [y_min, y_max], 'r', linewidth=2)
 
         interp = interp1d(model_list[i].datetimes, model_list[i].predicted, kind='cubic')
         xnew = np.linspace(model_list[i].getMinDate(), model_list[i].getMaxDate(), 500)
         
-        plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=2)
+        axs[i, 0].plot(xnew, interp(xnew), 'm-', linewidth=2)
         
 def setupModels(all_band_data, num_bands, init_obs, cv, alpha, bands):
     
@@ -245,7 +243,7 @@ def initModel(pixel_data, num_bands, init_obs, cv, alpha, bands):
 
     return curr_obs_list, init_end
 
-def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args):
+def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args, axs):
     
     """Continues to add data points to the model until either a new breakpoint is detected, or there
         are not enough observations remaining."""
@@ -315,7 +313,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args):
             if(args.output_mode == "normal"):
                 
                 if(args.outtype == 'plot'):
-                    addChangeMarker(num_bands, change_time, pixel_data)
+                    addChangeMarker(num_bands, change_time, pixel_data, axs)
     
                 else:  
                     for model_ix in range(len(model_output)):
@@ -345,8 +343,9 @@ def runCCDC(input_data, num_bands, x_val, y_val, args):
 
     # The algorithm needs at least 12 observations to start
     if(len(input_data) >= 12):
-        
+
         output_file = None
+        axs = None
         
         if(args.output_mode == "normal"):
                               
@@ -354,15 +353,12 @@ def runCCDC(input_data, num_bands, x_val, y_val, args):
 
                 output_file = os.path.join(args.outdir, "{}_{}.pdf".format(x_val, y_val))
                   
-                fig = plt.figure(figsize=(20, 10))
+                fig, axs = plt.subplots(num_bands, 1, sharex=True, figsize=(20, 10), squeeze=False)
                 
                 # Set up plots with original data and screened data
                 for i in range(num_bands):
-                    plt_list.append(fig.add_subplot(num_bands, 1, i+1))
-                    plt_list[i].plot(input_data[:,0], input_data[:,i+1], 'o', color='k', label='Original data', markersize=4)
-                    myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
-                    plt_list[i].xaxis.set_major_formatter(myFmt)
-                    plt_list[i].set_ylabel(args.bands[i], fontdict={"size": 18})
+                    axs[i, 0].plot(input_data[:,0], input_data[:,i+1], 'o', color='k', label='Original data', markersize=4)                    
+                    axs[i, 0].set_ylabel(args.bands[i], fontdict={"size": 18})
     
         if(args.output_mode == "predictive"):
             
@@ -398,7 +394,7 @@ def runCCDC(input_data, num_bands, x_val, y_val, args):
         # Remaining data length needs to be smaller than window size
         while(len(input_data) >= window):
 
-            input_data = findChange(input_data, output_file, num_bands, window, x_val, y_val, args)
+            input_data = findChange(input_data, output_file, num_bands, window, x_val, y_val, args, axs)
                     
             if(args.output_mode == "predictive"):
                 
@@ -418,14 +414,16 @@ def runCCDC(input_data, num_bands, x_val, y_val, args):
                 for i in range(num_bands):
                     interp = interp1d(model_list[i].datetimes, model_list[i].predicted, kind='cubic')
                     xnew = np.linspace(model_list[i].getMinDate(), model_list[i].getMaxDate(), 500)
-                    plt_list[i].plot(xnew, interp(xnew), 'm-', linewidth=2) # Plot fitted model              
+                    axs[i, 0].plot(xnew, interp(xnew), 'm-', linewidth=2) # Plot fitted model              
     
                 # Plot empty datasets so start/end of change is included in legend
-                plt_list[0].plot([], [], 'r', label='Change')
-                plt_list[0].plot([], [], 'm', label='Fitted model')
+                axs[0, 0].plot([], [], 'r', label='Change')
+                axs[0, 0].plot([], [], 'm', label='Fitted model')
                 
-                plt_list[0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=4, fancybox=True, shadow=True)
+                axs[0, 0].legend(loc='upper center', bbox_to_anchor=(0.5, 1.05), ncol=4, fancybox=True, shadow=True)
                 plt.xlabel("Date", fontdict={"size": 18})
+                myFmt = mdates.DateFormatter('%m/%Y') # Format dates as month/year rather than ordinal dates
+                axs[0, 0].xaxis.set_major_formatter(myFmt)
                 plt.tight_layout()
                 plt.savefig(output_file)
                 plt.close(fig)
@@ -1012,7 +1010,7 @@ def runOnNetCDF(num_bands, args):
                 
                 argslist = (input_ts, num_bands, x_val, y_val, args)
                 ccdc_args.append(argslist)
-                        
+                                  
     # Do some tidying up
     del input_data   
   

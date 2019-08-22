@@ -351,7 +351,7 @@ def runCCDC(input_data, num_bands, x_val, y_val, args):
                               
             if(args.outtype == 'plot'):
 
-                output_file = os.path.join(args.outdir, "{}_{}.pdf".format(x_val, y_val))
+                output_file = os.path.join(args.outdir, "{}_{}.png".format(x_val, y_val))
                   
                 fig, axs = plt.subplots(num_bands, 1, sharex=True, figsize=(20, 10), squeeze=False)
                 

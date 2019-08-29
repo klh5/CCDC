@@ -23,7 +23,7 @@ class MakeCCDCModel(object):
         self.end_val = None
         self.alpha = None
         self.init_obs = init_obs
-
+    
     def fitModel(self, band_data, cv, alpha):
         
         self.start_val = band_data[0]

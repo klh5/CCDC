@@ -26,7 +26,7 @@ matplotlib.rcParams.update({'font.size': 16})
 manager = Manager()
 rows = manager.list()
 
-def addChangeMarker(num_bands, change_date, obs_data, axs):
+def addChangeMarker(num_bands, change_date, obs_data, axs, model_list):
 
     """ Adds vertical lines to each plot every time change is detected """
        
@@ -41,7 +41,7 @@ def addChangeMarker(num_bands, change_date, obs_data, axs):
         
         axs[i, 0].plot(xnew, interp(xnew), 'm-', linewidth=2)
         
-def setupModels(all_band_data, num_bands, init_obs, cv, alpha, bands):
+def setupModels(all_band_data, num_bands, init_obs, cv, alpha, bands, model_list):
     
     """Creates a model for each band and stores it in model_list"""
     
@@ -111,7 +111,7 @@ def setupPredictionFile(output_file, num_bands, band_names):
  
         writer.writerow(row) 
         
-def writeOutPrediction(output_file, end_date):
+def writeOutPrediction(output_file, end_date, model_list):
     
     with open(output_file, 'a') as output:
         writer = csv.writer(output)
@@ -186,7 +186,7 @@ def doTmask(input_ts, tmask_ts):
             
     return input_ts
 
-def initModel(pixel_data, num_bands, init_obs, cv, alpha, bands):
+def initModel(pixel_data, num_bands, init_obs, cv, alpha, bands, model_list):
 
     """Finds a sequence of 6/12/18/24 consecutive clear observations without any change, to initialize the model"""
 
@@ -211,7 +211,7 @@ def initModel(pixel_data, num_bands, init_obs, cv, alpha, bands):
             return None
     
         # Re-initialize the models
-        setupModels(curr_obs_list, num_bands, init_obs, cv, alpha, bands)
+        setupModels(curr_obs_list, num_bands, init_obs, cv, alpha, bands, model_list)
 
         # Get total time used for model initialization
         total_time = np.max(curr_obs_list[:,0]) - np.min(curr_obs_list[:,0])
@@ -243,7 +243,7 @@ def initModel(pixel_data, num_bands, init_obs, cv, alpha, bands):
 
     return curr_obs_list, init_end
 
-def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args, axs):
+def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args, axs, model_list):
     
     """Continues to add data points to the model until either a new breakpoint is detected, or there
         are not enough observations remaining."""
@@ -253,7 +253,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args, axs):
     global rows
     
     try:
-        model_data, next_obs = initModel(pixel_data, num_bands, init_obs, args.cross_validate, args.alpha, args.bands)
+        model_data, next_obs = initModel(pixel_data, num_bands, init_obs, args.cross_validate, args.alpha, args.bands, model_list)
     except TypeError:
         return []
     
@@ -291,7 +291,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args, axs):
             num_new_obs += 1
             
             if(num_new_obs == args.re_init):
-                setupModels(model_data, num_bands, init_obs, args.cross_validate, args.alpha, args.bands)
+                setupModels(model_data, num_bands, init_obs, args.cross_validate, args.alpha, args.bands, model_list)
                 
                 if(args.output_mode == "normal" and args.outtype == 'csv'):
                         model_output = [[x, y, m.band, m.getMinDate(), m.getMaxDate(), m.start_val, m.end_val, ["{:0.5f}".format(c) for c in m.coefficients], m.RMSE, m.lasso_model.intercept_, m.alpha] for m in model_list]
@@ -313,7 +313,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args, axs):
             if(args.output_mode == "normal"):
                 
                 if(args.outtype == 'plot'):
-                    addChangeMarker(num_bands, change_time, pixel_data, axs)
+                    addChangeMarker(num_bands, change_time, pixel_data, axs, model_list)
     
                 else:  
                     for model_ix in range(len(model_output)):
@@ -346,6 +346,7 @@ def runCCDC(input_data, num_bands, x_val, y_val, args):
 
         output_file = None
         axs = None
+        model_list = [None for i in range(num_bands)] # Set up list of models
         
         if(args.output_mode == "normal"):
                               
@@ -394,7 +395,7 @@ def runCCDC(input_data, num_bands, x_val, y_val, args):
         # Remaining data length needs to be smaller than window size
         while(len(input_data) >= window):
 
-            input_data = findChange(input_data, output_file, num_bands, window, x_val, y_val, args, axs)
+            input_data = findChange(input_data, output_file, num_bands, window, x_val, y_val, args, axs, model_list)
                     
             if(args.output_mode == "predictive"):
                 
@@ -402,11 +403,11 @@ def runCCDC(input_data, num_bands, x_val, y_val, args):
                 # set is greater than the date to predict, the current set of models are the ones to use.
                 if(len(input_data) > 0): # If there is still data left to process                        
                     if(input_data[0][0] > end_date):
-                        writeOutPrediction(output_file, end_date)
+                        writeOutPrediction(output_file, end_date, model_list)
                         return
                         
                 else: # End of data has been reached without finding the date to predict
-                    writeOutPrediction(output_file, end_date)
+                    writeOutPrediction(output_file, end_date, model_list)
                 
         if(args.output_mode == "normal"):
             if(args.outtype == 'plot'):
@@ -1043,9 +1044,6 @@ def main(args):
         sys.exit()
        
     num_bands = len(args.bands)
-    
-    global model_list 
-    model_list = [None for i in range(num_bands)] # Set up list of models
     
     # Chec output mode
     if(args.output_mode == "predictive"): # Predictive mode requires some extra parameters

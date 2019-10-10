@@ -251,7 +251,7 @@ def jumpAhead(pixel_data, num_bands, cv, alpha, bands, model_list):
     max_iters = len(pixel_data) - 47
 
     while(True):
-
+        print(num_iters)
         if(num_iters == max_iters):
             return None
         
@@ -297,21 +297,24 @@ def jumpAhead(pixel_data, num_bands, cv, alpha, bands, model_list):
         # If model is stable
         if((total_slope_eval / num_bands) < 1 and (total_start_eval / num_bands) < 1 and (total_end_eval / num_bands) < 1):
 
-            rmse_vals = []
+            change_eval = 0
             
-            # Get mean RMSE over all models using first model as the predictor
+            # Check for similarity to the first model over all bands
             for i in range(1, num_bands+1): # For each band
+                
+                rmse = model_list[i-1].RMSE
                 
                 real_vals = curr_window[:,i]
 
                 predicted_vals = model_list[i-1].getPrediction(datetimes)
+
+                error = real_vals - predicted_vals
                 
-                rmse = np.sqrt(np.mean((real_vals - predicted_vals)**2))
-                print(rmse, 3*(model_list[i-1].RMSE))
-                if(rmse < 3*(model_list[i-1].RMSE)):
-                    rmse_vals.append(rmse)
-     
-            if(len(rmse_vals) == num_bands): # All bands show enough similarity to the previous models
+                mean_error = np.absolute(np.mean(error))
+
+                change_eval += (mean_error / (2*rmse))
+                
+            if((change_eval / num_bands) <= 1): # All bands show enough similarity to the previous models
 
                 # Get data up to end of second model
                 extended_model_data = pixel_data[:curr_end]

@@ -244,37 +244,30 @@ def initModel(pixel_data, num_bands, init_obs, cv, alpha, bands, model_list):
     return curr_obs_list, init_end
 
 def jumpAhead(pixel_data, num_bands, cv, alpha, bands, model_list):
-    
-    num_iters = 0
-     
-    # Get maximum number of iterations before not enough data is left
-    max_iters = len(pixel_data) - 47
 
-    while(True):
+    curr_mid = len(pixel_data) - 12
+    num_iters = 0
+    
+    while((curr_mid-12) >= 24):
         print(num_iters)
-        if(num_iters == max_iters):
-            return None
-        
-        curr_end = len(pixel_data)-num_iters
-                
-        curr_window = pixel_data[-24-num_iters:curr_end,:] # Shift backwards 1 row
+        curr_window = pixel_data[curr_mid-12:curr_mid+12,:]
         
         # Get column of datetime values
         datetimes = curr_window[:,0]
-        
+            
         new_models = []
-    
+        
         # Create a model for each band and store it in model_list
         for i in range(1, num_bands+1):
-
+    
             band_data = curr_window[:,i]
-
+    
             ccdc_model = MakeCCDCModel(datetimes, 24, bands[i-1])
-
+    
             ccdc_model.fitModel(band_data, cv, alpha)
-        
+            
             new_models.append(ccdc_model)
-
+    
         # Get total time used for model initialization
         total_time = np.max(curr_window[:,0]) - np.min(curr_window[:,0])
         
@@ -293,10 +286,10 @@ def jumpAhead(pixel_data, num_bands, cv, alpha, bands, model_list):
             
             end_val = np.absolute(band_model.end_val - band_model.predicted[23]) / (3 * band_model.RMSE)
             total_end_eval += end_val
- 
+     
         # If model is stable
         if((total_slope_eval / num_bands) < 1 and (total_start_eval / num_bands) < 1 and (total_end_eval / num_bands) < 1):
-
+    
             change_eval = 0
             
             # Check for similarity to the first model over all bands
@@ -305,27 +298,26 @@ def jumpAhead(pixel_data, num_bands, cv, alpha, bands, model_list):
                 rmse = model_list[i-1].RMSE
                 
                 real_vals = curr_window[:,i]
-
+    
                 predicted_vals = model_list[i-1].getPrediction(datetimes)
-
+    
                 error = real_vals - predicted_vals
                 
                 mean_error = np.absolute(np.mean(error))
-
-                change_eval += (mean_error / (2*rmse))
                 
+                change_eval += (mean_error / (2*rmse))
+                print(mean_error, change_eval)
             if((change_eval / num_bands) <= 1): # All bands show enough similarity to the previous models
 
-                # Get data up to end of second model
-                extended_model_data = pixel_data[:curr_end]
+                new_data = pixel_data[:curr_mid+12,:]
+                
+                setupModels(new_data, num_bands, 24, cv, alpha, bands, model_list)
 
-                # Refresh models to include data up to end of new model
-                setupModels(extended_model_data, num_bands, 24, cv, alpha, bands, model_list)
-                
-                return extended_model_data, curr_end+1
+                return new_data, len(new_data)
             
+        curr_mid = int(np.ceil(curr_mid / 2))
         num_iters += 1
-                
+               
 def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args, axs, model_list):
     
     """Continues to add data points to the model until either a new breakpoint is detected, or there
@@ -1059,15 +1051,17 @@ def runOnCSV(num_bands, args):
                     output_file = os.path.join(args.outdir, uq_name)                    
                 
                     runCCDC(ts_data.values, num_bands, 0, 0, args)       
-                                  
-                    # Write headers to file
-                    headers = ["x", "y", "band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
-                      
-                    with open(output_file, 'w') as output:
-                        writer = csv.writer(output)
-                        writer.writerow(headers)
-                        writer.writerows(rows)
-     
+                    
+                    if(args.outtype == 'csv'):
+                        
+                        # Write headers to file
+                        headers = ["x", "y", "band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
+                          
+                        with open(output_file, 'w') as output:
+                            writer = csv.writer(output)
+                            writer.writerow(headers)
+                            writer.writerows(rows)
+         
                 except AttributeError:
                     print("Could not process CSV file {}. Check column names".format(file))
                     
@@ -1080,7 +1074,7 @@ def runOnNetCDF(num_bands, args):
     
     global rows
 
-    # Calculate the right number of columns to be returned from the data cube
+    # Calculate the right number of columns
     input_num_cols = num_bands + 1    
 
     input_data = xr.open_dataset(args.input_file)
@@ -1109,17 +1103,19 @@ def runOnNetCDF(num_bands, args):
     # Run processes for this key                                        
     with Pool(processes=args.num_procs) as pool:
         pool.starmap(runCCDC, ccdc_args)
-
-    # Generate output file name for this key
-    output_file = os.path.join(args.outdir, "{}.csv".format(args.output_file)) 
-
-    # Write headers to file
-    headers = ["x", "y", "band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
-  
-    with open(output_file, 'w') as output:
-        writer = csv.writer(output)
-        writer.writerow(headers)
-        writer.writerows(rows)
+    
+    if(args.outtype == 'csv'):
+        
+        # Generate output file name for this key
+        output_file = os.path.join(args.outdir, "{}.csv".format(args.output_file)) 
+    
+        # Write headers to file
+        headers = ["x", "y", "band", "start_date", "end_date", "start_val", "end_val", "coeffs", "RMSE", "intercept", "alpha", "change_date", "magnitude"]
+      
+        with open(output_file, 'w') as output:
+            writer = csv.writer(output)
+            writer.writerow(headers)
+            writer.writerows(rows)
 
     # Reset shared list
     rows = []                              
@@ -1213,7 +1209,7 @@ if __name__ == "__main__":
     parser.add_argument('-a', '--alpha', type=float, default=1.0, help="Alpha parameter for Lasso regression. Defaults to 1.0.")
     parser.add_argument('-cv', '--cross_validate', default=False, action='store_true', help="Whether to use cross validation to find alpha parameter. If set the --alpha argument will be ignored.")
     parser.add_argument('-if', '--input_file', help="Path to input NetCDF file, if process mode is nc.")
-    parser.add_argument('-of', '--output_file', help="The output file name to use if using CSV output, e.g. tile number.")
+    parser.add_argument('-of', '--output_file', default='ccdc_out', help="The output file name to use if using CSV output, e.g. tile number.")
 
     args = parser.parse_args()
       

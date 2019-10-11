@@ -245,12 +245,16 @@ def initModel(pixel_data, num_bands, init_obs, cv, alpha, bands, model_list):
 
 def jumpAhead(pixel_data, num_bands, cv, alpha, bands, model_list):
 
-    curr_mid = len(pixel_data) - 12
-    num_iters = 0
+    start_ix = 24
     
-    while((curr_mid-12) >= 24):
-        print(num_iters)
-        curr_window = pixel_data[curr_mid-12:curr_mid+12,:]
+    while(True):
+        
+        end_ix = start_ix + 24
+
+        curr_window = pixel_data[start_ix:end_ix] # Window we are fitting the new model to
+        
+        if(len(curr_window) < 24):
+            return pixel_data[:start_ix,], start_ix
         
         # Get column of datetime values
         datetimes = curr_window[:,0]
@@ -306,18 +310,19 @@ def jumpAhead(pixel_data, num_bands, cv, alpha, bands, model_list):
                 mean_error = np.absolute(np.mean(error))
                 
                 change_eval += (mean_error / (2*rmse))
-                print(mean_error, change_eval)
+
             if((change_eval / num_bands) <= 1): # All bands show enough similarity to the previous models
-
-                new_data = pixel_data[:curr_mid+12,:]
                 
-                setupModels(new_data, num_bands, 24, cv, alpha, bands, model_list)
-
-                return new_data, len(new_data)
-            
-        curr_mid = int(np.ceil(curr_mid / 2))
-        num_iters += 1
-               
+                # Add the data from the window to the model
+                setupModels(pixel_data[:end_ix,], num_bands, 24, cv, alpha, bands, model_list)
+                start_ix += 24
+                
+            else:
+                return pixel_data[:start_ix,], start_ix
+                
+        else: # Not stable period, so can't be added to the model
+            return pixel_data[:start_ix,], start_ix
+                                      
 def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args, axs, model_list):
     
     """Continues to add data points to the model until either a new breakpoint is detected, or there
@@ -329,20 +334,24 @@ def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args, axs, mo
 
     # Initialize model
     try:
+        #print('Initializing model...')
         model_data, next_obs = initModel(pixel_data, num_bands, init_obs, args.cross_validate, args.alpha, args.bands, model_list)
     except TypeError:
+        #print('Initialization failed')
         return [] # No model could be initialized
     
     # See if model can be extended to reduce run time
     if(len(pixel_data) >= 48 and init_obs == 24):
         try:
+            #print('Trying jump...')
             model_data, next_obs = jumpAhead(pixel_data, num_bands, args.cross_validate, args.alpha, args.bands, model_list)
         except TypeError:
+            #print('Jump failed')
             pass
         
     if(args.output_mode == "normal" and args.outtype == 'csv'):
         model_output = [[x, y, m.band, m.getMinDate(), m.getMaxDate(), m.start_val, m.end_val, ["{:0.5f}".format(c) for c in m.coefficients], m.RMSE, m.lasso_model.intercept_, m.alpha] for m in model_list]
-    
+
     # Detect change
     change_flag = 0
     change_time = None
@@ -351,7 +360,9 @@ def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args, axs, mo
     num_new_obs = 0
 
     while((next_obs+1) <= len(pixel_data)):
-
+        
+        #print('Finding change...')
+        
         change_eval = 0
         
         # Get next row from the time series

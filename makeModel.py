@@ -82,7 +82,13 @@ class MakeCCDCModel(object):
                       [np.sin(self.pi_val_full * date_to_predict)]])))
     
         x = x.T
-        return self.lasso_model.predict(x.reshape(1,-1))
+
+        if(len(x) == 1):
+            x = x.reshape(1, -1)
+        else:
+            x = x.reshape(len(x), 7)
+            
+        return self.lasso_model.predict(x)
     
     def getAdjustedRMSE(self, curr_date):
         

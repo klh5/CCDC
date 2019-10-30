@@ -238,7 +238,7 @@ def initModel(pixel_data, num_bands, init_obs, cv, alpha, bands, model_list):
         
         else:
             model_init = True
-            init_end = init_obs + num_iters + 1
+            init_end = init_obs + num_iters
             #print("Model initialized. Iterations needed: {}".format(num_iters))
 
     return curr_obs_list, init_end
@@ -265,7 +265,7 @@ def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args, axs, mo
     change_time = None
     change_mags = None
     
-    num_new_obs = 0
+    prev_date = None
 
     while((next_obs+1) <= len(pixel_data)):
 
@@ -276,6 +276,9 @@ def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args, axs, mo
         
         # Get date
         new_date = new_obs[0]
+        
+        if not prev_date:
+            prev_date = new_date
         
         # Calculate difference between real and predicted value for the new observation in each band
         residuals = [new_obs[i] - model_list[i-1].getPrediction(new_date)[0] for i in range(1, num_bands+1)]
@@ -288,15 +291,15 @@ def findChange(pixel_data, change_file, num_bands, init_obs, x, y, args, axs, mo
             #print("Adding new data point")
             model_data = np.append(model_data, [new_obs], axis=0)
             
-            num_new_obs += 1
+            date_diff = new_date - prev_date # Will be 0 on first pass
             
-            if(num_new_obs == args.re_init):
+            if(date_diff >= args.re_init):
                 setupModels(model_data, num_bands, init_obs, args.cross_validate, args.alpha, args.bands, model_list)
                 
                 if(args.output_mode == "normal" and args.outtype == 'csv'):
                         model_output = [[x, y, m.band, m.getMinDate(), m.getMaxDate(), m.start_val, m.end_val, ["{:0.5f}".format(c) for c in m.coefficients], m.RMSE, m.lasso_model.intercept_, m.alpha] for m in model_list]
                 
-                num_new_obs = 0
+                prev_date = new_date
                 
             change_flag = 0 # Reset change flag because we have an inlier
 
@@ -1115,7 +1118,7 @@ if __name__ == "__main__":
     parser.add_argument('-ip', '--input_products', nargs='+', help="The product(s) to use for change detection.")    
     parser.add_argument('-tp', '--tmask_products', nargs='+', help="The top-of-atmosphere reflectance product(s) to use for Tmask screening. If no products are specified no screening will be applied.")
     parser.add_argument('-clouds', '--cloud_products', nargs='+', help="The product(s) to use for cloud masking. If not specified, the data is assumes to already be masked.")    
-    parser.add_argument('-i', '--re_init', type=int, default=1, help="The number of new observations added to a model before the model is refitted.")
+    parser.add_argument('-i', '--re_init', type=int, default=0, help="The number of days that should pass before the model is refitted. By default the model is refitted after every new observation.")
     parser.add_argument('-p', '--num_procs', type=int, default=1, help="The number of processes to use.")
     parser.add_argument('-b', '--bands', nargs='+', required=True, help="List of band names to use in the analysis.")    
     parser.add_argument('-csv', '--csv_dir', help="The directory to search for CSV files, if process mode is CSV.")
